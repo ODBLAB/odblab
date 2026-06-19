@@ -15,6 +15,7 @@ import odbAccess
 import numpy as np
 import multiprocessing
 from argparse import ArgumentParser
+from collections import OrderedDict
 from itertools import accumulate, chain
 from abaqusConstants import NODAL, ELEMENT_NODAL, CENTROID, INTEGRATION_POINT
 
@@ -78,14 +79,14 @@ def extractMesh(odbPath):
             # extract node sets
             if entity == odb.rootAssembly:
                 for setName, nodeSet in entity.nodeSets.items():
-                    mesh["__node_set__\\%s" % setName] = np.array(object=sorted(set(
+                    mesh["__node_set__.\"%s\"" % setName] = np.array(object=sorted(set(
                         nodeMap[(instance.name, node.label)]
                         for instance, nodes in zip(nodeSet.instances, nodeSet.nodes)
                         for node in nodes
                     )), dtype=np.int32)
             else:
                 for setName, nodeSet in entity.nodeSets.items():
-                    mesh["__node_set__\\%s.%s" % (entityName, setName)] = np.array(object=sorted(set(
+                    mesh["__node_set__.\"%s.%s\"" % (entityName, setName)] = np.array(object=sorted(set(
                         nodeMap[(entityName, node.label)]
                         for node in nodeSet.nodes
                     )), dtype=np.int32)
@@ -93,14 +94,14 @@ def extractMesh(odbPath):
             # extract element sets
             if entity == odb.rootAssembly:
                 for setName, elementSet in entity.elementSets.items():
-                    mesh["__element_set__\\%s" % setName] = np.array(object=sorted(set(
+                    mesh["__element_set__.\"%s\"" % setName] = np.array(object=sorted(set(
                         elementMap[(instance.name, element.label)]
                         for instance, elements in zip(elementSet.instances, elementSet.elements)
                         for element in elements
                     )), dtype=np.int32)
             else:
                 for setName, elementSet in entity.elementSets.items():
-                    mesh["__element_set__\\%s.%s" % (entityName, setName)] = np.array(object=sorted(set(
+                    mesh["__element_set__.\"%s.%s\"" % (entityName, setName)] = np.array(object=sorted(set(
                         elementMap[(entityName, element.label)]
                         for element in elementSet.elements
                     )), dtype=np.int32)
@@ -182,13 +183,13 @@ def extractFrame(odbPath, stepName, frameIndex, nodeMap, elementMap):
         frame = step.frames[frameIndex]
         fieldOutputs = frame.fieldOutputs.values()
         data = dict()
-        prefix = "__frame__\\%g\\" % (step.totalTime + frame.frameValue)
+        data["__time__"] = step.totalTime + frame.frameValue
 
         # extract centroid data
         centroidData = extractResults(fieldOutputs, INTEGRATION_POINT, CENTROID, elementMap)
         if centroidData:
-            data[prefix + "__centroid_data__"] = centroidData[0]
-            data[prefix + "__centroid_headers__"] = centroidData[1]
+            data["__centroid_data__"] = centroidData[0]
+            data["__centroid_headers__"] = centroidData[1]
 
         # extract node data
         nodeData = extractResults(fieldOutputs, NODAL, NODAL, nodeMap)
@@ -199,8 +200,8 @@ def extractFrame(odbPath, stepName, frameIndex, nodeMap, elementMap):
                     np.concatenate((nodeData[1], elementNodeData[1]), axis=0)
             else:
                 nodeData = nodeData or elementNodeData
-            data[prefix + "__node_data__"] = nodeData[0]
-            data[prefix + "__node_headers__"] = nodeData[1]
+            data["__node_data__"] = nodeData[0]
+            data["__node_headers__"] = nodeData[1]
 
         # done
         return data
@@ -208,6 +209,42 @@ def extractFrame(odbPath, stepName, frameIndex, nodeMap, elementMap):
     finally:
         if odb is not None:
             odb.close()
+
+def mergeResults(results, nodeMap, elementMap):
+    """Merges the frame-based results into a single array."""
+
+    # build value to index mappings
+    timeMap = OrderedDict()
+    nodeHeaderMap = OrderedDict()
+    centroidHeaderMap = OrderedDict()
+    for resultBlock in results:
+        time = resultBlock["__time__"]
+        if time not in timeMap: timeMap[time] = len(timeMap)
+        for nodeHeader in resultBlock.get("__node_headers__", list()):
+            if nodeHeader not in nodeHeaderMap: nodeHeaderMap[nodeHeader] = len(nodeHeaderMap)
+        for centroidHeader in resultBlock.get("__centroid_headers__", list()):
+            if centroidHeader not in centroidHeaderMap: centroidHeaderMap[centroidHeader] = len(centroidHeaderMap)
+
+    # merge data
+    mergedNodeData = np.zeros(shape=(len(nodeHeaderMap), len(nodeMap), len(timeMap)), dtype=np.float32)
+    mergedCentroidData = np.zeros(shape=(len(centroidHeaderMap), len(elementMap), len(timeMap)), dtype=np.float32)
+    for resultBlock in results:
+        timeIndex = timeMap[resultBlock["__time__"]]
+        if "__node_data__" in resultBlock:
+            headerIndices = [nodeHeaderMap[header] for header in resultBlock["__node_headers__"]]
+            mergedNodeData[headerIndices, :, timeIndex] = resultBlock["__node_data__"].T
+        if "__centroid_data__" in resultBlock:
+            headerIndices = [centroidHeaderMap[header] for header in resultBlock["__centroid_headers__"]]
+            mergedCentroidData[headerIndices, :, timeIndex] = resultBlock["__centroid_data__"].T
+
+    # done
+    return {
+        "__times__": np.array(object=timeMap.keys(), dtype=np.float32),
+        "__node_headers__": np.array(object=nodeHeaderMap.keys(), dtype="S24"),
+        "__centroid_headers__": np.array(object=centroidHeaderMap.keys(), dtype="S24"),
+        "__node_data__": mergedNodeData,
+        "__centroid_data__": mergedCentroidData,
+    }
 
 def main(odbPath):
     """The main block."""
@@ -237,15 +274,21 @@ def main(odbPath):
 
     # merge and write to disk
     print("Saving data to disk...")
-    for result in results: data.update(result)
-    npzPath = os.path.splitext(odbPath)[0] + ".npz"
-    np.savez(npzPath, allow_pickle=False, **data)
+    data.update(mergeResults(results, nodeMap, elementMap))
+    odbzPath = os.path.splitext(odbPath)[0] + ".odbz"
+    with open(odbzPath, "wb") as odbz: np.savez(odbz, allow_pickle=False, **data)
 
     # done
-    print("Done extracting. Data stored in: " + npzPath)
+    print("Done extracting. Data stored in: " + odbzPath)
 
 if __name__ == "__main__":
-    argParser = ArgumentParser()
-    argParser.add_argument("--odb", dest="odb", type=os.path.abspath, required=True, help="The ODB file path.")
-    args = argParser.parse_args()
-    main(args.odb)
+    with open("odb2npz.log", "w") as log:
+        try:
+            argParser = ArgumentParser()
+            argParser.add_argument("--odb", dest="odb", type=os.path.abspath, required=True, help="The ODB file path.")
+            args = argParser.parse_args()
+            main(args.odb)
+            log.write("EXIT_SUCCESS\n")
+        except Exception as e:
+            log.write("EXIT_FAILURE\n")
+            log.write("%s: %s\n" % (type(e).__name__, e))
