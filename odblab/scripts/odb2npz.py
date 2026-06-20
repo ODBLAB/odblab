@@ -39,8 +39,11 @@ def extractMesh(odbPath):
         # open database and perform counts
         odb = odbAccess.openOdb(path=odbPath, readOnly=True, readInternalSets=False)
         entities = [odb.rootAssembly] + list(odb.rootAssembly.instances.values())
-        nodeOffsets = [0] + list(accumulate(len(entity.nodes) for entity in entities))
-        elementOffsets = [0] + list(accumulate(len(entity.elements) for entity in entities))
+        nodeOffsets = [0]
+        elementOffsets = [0]
+        for entity in entities:
+            nodeOffsets.append(len(entity.nodes))
+            elementOffsets.append(len(entity.elements))
         nodeCount = nodeOffsets[-1]
         elementCount = elementOffsets[-1]
 
@@ -239,9 +242,9 @@ def mergeResults(results, nodeMap, elementMap):
 
     # done
     return {
-        "__times__": np.array(object=timeMap.keys(), dtype=np.float32),
-        "__node_headers__": np.array(object=nodeHeaderMap.keys(), dtype="S24"),
-        "__centroid_headers__": np.array(object=centroidHeaderMap.keys(), dtype="S24"),
+        "__times__": np.array(object=list(timeMap.keys()), dtype=np.float32),
+        "__node_headers__": np.array(object=list(nodeHeaderMap.keys()), dtype="S24"),
+        "__centroid_headers__": np.array(object=list(centroidHeaderMap.keys()), dtype="S24"),
         "__node_data__": mergedNodeData,
         "__centroid_data__": mergedCentroidData,
     }
