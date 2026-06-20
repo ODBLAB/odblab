@@ -42,8 +42,8 @@ def extractMesh(odbPath):
         nodeOffsets = [0]
         elementOffsets = [0]
         for entity in entities:
-            nodeOffsets.append(len(entity.nodes))
-            elementOffsets.append(len(entity.elements))
+            nodeOffsets.append(len(entity.nodes) + nodeOffsets[-1])
+            elementOffsets.append(len(entity.elements) + elementOffsets[-1])
         nodeCount = nodeOffsets[-1]
         elementCount = elementOffsets[-1]
 
