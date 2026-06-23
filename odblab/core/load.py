@@ -1,69 +1,15 @@
 import subprocess
 import numpy as np
 from pathlib import Path
-from typing import NamedTuple
 from numpy.ma import MaskedArray
 from numpy import ndarray as Array
 from importlib import resources
-
-class Database(NamedTuple):
-    """
-    A data container for extracted finite element analysis mesh and results.
-    This container holds the finite element mesh, node/element sets, and temporal field output data.
-    """
-
-    nodes: Array
-    """
-    Array of (x, y, z) nodal coordinates.
-    Shape: `(n, 3)`, where `n` is the total number of nodes.
-    """
-
-    elements: MaskedArray
-    """
-    Masked array of element connectivities. Padded with -1 for elements with fewer than the maximum number of nodes.
-    Shape: `(m, n)`, where `m` is the total number of elements and `n` is the maximum number of element nodes.
-    """
-
-    types: Array
-    """
-    Array of element type identifiers.
-    Shape: `(n,)`, where `n` is the total number of elements.
-    """
-
-    nodeSets: dict[str, Array]
-    """Maps node set names to their corresponding 1D array of node indices."""
-
-    elementSets: dict[str, Array]
-    """Maps element set names to their corresponding 1D array of element indices."""
-
-    times: Array
-    """
-    Array of available frame times/frequencies.
-    Shape: `(n,)`, where `n` is the number of frames.
-    """
-
-    nodeData: Array
-    """
-    Array of node field outputs.
-    Shape: `(m, n, k)`, where `m` is the number of node variables, `n` is the number of nodes, and `k` is the number of
-    frames.
-    """
-
-    centroidData: Array
-    """
-    Array of element/centroid field outputs.
-    Shape: `(m, n, k)`, where `m` is the number of element/centroid variables, `n` is the number of elements/centroids,
-    and `k` is the number of frames.
-    """
-
-    nodeHeaders: Array
-    """Names of the extracted node variables corresponding to the first dimension of `nodeData`."""
-
-    centroidHeaders: Array
-    """Names of the extracted element/centroid variables corresponding to the first dimension of `centroidData`."""
+from odblab.core import Database
 
 def _loadNpz(npzPath: str | Path) -> Database:
     """Loads the requested *.npz file."""
+    if not isinstance(npzPath, Path): npzPath = Path(npzPath)
+    npzPath = npzPath.resolve()
     with np.load(npzPath) as data:
         nodes: Array = data["__nodes__"]
         types: Array = data["__types__"].astype("U")
@@ -83,12 +29,14 @@ def _loadNpz(npzPath: str | Path) -> Database:
         centroidHeaders: Array = data["__centroid_headers__"].astype("U")
         return Database(
             nodes, elements, types, nodeSets, elementSets,
-            times, nodeData, centroidData, nodeHeaders, centroidHeaders
+            times, nodeHeaders, centroidHeaders, nodeData, centroidData,
+            str(npzPath)
         )
 
 def _loadOdb(odbPath: str | Path) -> Database:
     """Loads the requested *.odb file."""
     if not isinstance(odbPath, Path): odbPath = Path(odbPath)
+    odbPath = odbPath.resolve()
     odbzPath: Path = odbPath.with_suffix(".odbz")
     if odbPath.exists() and odbzPath.exists() and odbzPath.stat().st_mtime > odbPath.stat().st_mtime:
         print("Using cached ODBZ database.")

@@ -141,10 +141,14 @@ def extractResults(fieldOutputs, originalPosition, extrapolatedPosition, labelMa
             fieldOutput.name + "." + label
             for label in list(fieldOutput.componentLabels) + [inv.name for inv in fieldOutput.validInvariants]
         ] or [fieldOutput.name]
+        variables = [".".join(var.split()) for var in variables]
 
         # pre-allocate arrays
-        matrix = np.zeros(shape=(len(labelMap), len(variables)), dtype=np.float32)
-        if smooth: counts = np.zeros(shape=(matrix.shape[0], 1), dtype=np.int32)
+        if smooth:
+            matrix = np.zeros(shape=(len(labelMap), len(variables)), dtype=np.float32)
+            counts = np.zeros(shape=(matrix.shape[0], 1), dtype=np.int32)
+        else:
+            matrix = np.full(shape=(len(labelMap), len(variables)), fill_value=np.nan, dtype=np.float32)
 
         # extract data
         columnIndex = 0
@@ -163,8 +167,10 @@ def extractResults(fieldOutputs, originalPosition, extrapolatedPosition, labelMa
 
         # nodal smoothing/averaging
         if smooth:
-            counts[counts == 0] = 1
+            unmapped = counts[:, 0] == 0
+            counts[unmapped] = 1
             matrix /= counts
+            matrix[unmapped, :] = np.nan
 
         # store results
         results.append(matrix)
@@ -229,8 +235,14 @@ def mergeResults(results, nodeMap, elementMap):
             if centroidHeader not in centroidHeaderMap: centroidHeaderMap[centroidHeader] = len(centroidHeaderMap)
 
     # merge data
-    mergedNodeData = np.zeros(shape=(len(nodeHeaderMap), len(nodeMap), len(timeMap)), dtype=np.float32)
-    mergedCentroidData = np.zeros(shape=(len(centroidHeaderMap), len(elementMap), len(timeMap)), dtype=np.float32)
+    mergedNodeData = np.full(
+        shape=(len(nodeHeaderMap), len(nodeMap), len(timeMap)),
+        fill_value=np.nan, dtype=np.float32
+    )
+    mergedCentroidData = np.full(
+        shape=(len(centroidHeaderMap), len(elementMap), len(timeMap)),
+        fill_value=np.nan, dtype=np.float32
+    )
     for resultBlock in results:
         timeIndex = timeMap[resultBlock["__time__"]]
         if "__node_data__" in resultBlock:
