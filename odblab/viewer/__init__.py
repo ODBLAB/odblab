@@ -4,6 +4,7 @@ from odblab.viewer.spectrums import Spectrums as Spectrums
 from odblab.viewer.renderStyles import RenderStyles as RenderStyles
 from odblab.viewer.renderable import Renderable as Renderable
 from odblab.viewer.triad import Triad as Triad
+from odblab.viewer.border import Border as Border
 from odblab.viewer.legend import Legend as Legend
 from odblab.viewer.infoBlock import InfoBlock as InfoBlock
 from odblab.viewer.meshView import MeshView as MeshView

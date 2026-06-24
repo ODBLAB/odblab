@@ -1,6 +1,6 @@
 import numpy as np
 from numpy import ndarray as Array
-from odblab.viewer import Views, Triad, Legend, InfoBlock, MeshView
+from odblab.viewer import Views, Triad, Border, Legend, InfoBlock, MeshView
 from vtkmodules.vtkIOImage import vtkPNGWriter
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import vtkRenderer, vtkRenderWindow, vtkRenderWindowInteractor, vtkWindowToImageFilter
@@ -67,6 +67,10 @@ class Viewport(QWidget):
         # triad
         self._triad: Triad = Triad()
         self._triad.setInteractor(self._interactor)
+
+        # border
+        self._border: Border = Border()
+        self._border.attach(self._renderer)
 
         # legend
         self._legend: Legend = Legend()

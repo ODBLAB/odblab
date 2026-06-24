@@ -18,6 +18,22 @@ _MAPPINGS: dict[str, dict[int, list[str]]] = {
         VTK_QUADRATIC_PYRAMID:    ["C3D13"],
         VTK_QUADRATIC_WEDGE:      ["C3D15"],
         VTK_QUADRATIC_HEXAHEDRON: ["C3D20"],
+    },
+    "ansys": {
+        # first-order, linear
+        VTK_TRIANGLE:   ["TRI3"],
+        VTK_QUAD:       ["QUAD4"],
+        VTK_TETRA:      ["TET4"],
+        VTK_PYRAMID:    ["PYRAMID5"],
+        VTK_WEDGE:      ["WEDGE6"],
+        VTK_HEXAHEDRON: ["HEX8"],
+        # second-order, quadratic
+        VTK_QUADRATIC_TRIANGLE:   ["TRI6"],
+        VTK_QUADRATIC_QUAD:       ["QUAD8"],
+        VTK_QUADRATIC_TETRA:      ["TET10"],
+        VTK_QUADRATIC_PYRAMID:    ["PYRAMID13"],
+        VTK_QUADRATIC_WEDGE:      ["WEDGE15"],
+        VTK_QUADRATIC_HEXAHEDRON: ["HEX20"],
     }
 }
 
