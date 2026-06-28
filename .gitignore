@@ -1,0 +1,9 @@
+# ignore all files...
+*.*
+
+# ... except these:
+!.gitignore
+!.gitattributes
+!requirements.txt
+!*.py
+!*.svg
