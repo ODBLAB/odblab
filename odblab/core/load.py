@@ -1,3 +1,4 @@
+import sys
 import subprocess
 import numpy as np
 from pathlib import Path
@@ -12,7 +13,7 @@ def _loadNpz(npzPath: str | Path) -> Database:
     npzPath = npzPath.resolve()
     with np.load(npzPath) as data:
         nodes: Array = data["__nodes__"]
-        types: Array = data["__types__"].astype("U")
+        types: Array = data["__types__"]
         elements: MaskedArray = np.ma.array(data=data["__elements__"], mask=data["__elements__"] < 0, fill_value=-1)
         nodeSets: dict[str, Array] = {
             key.removeprefix("__node_set__.")[1:-1]: data[key]
@@ -25,8 +26,8 @@ def _loadNpz(npzPath: str | Path) -> Database:
         times: Array = data["__times__"]
         nodeData: Array = data["__node_data__"]
         centroidData: Array = data["__centroid_data__"]
-        nodeHeaders: Array = data["__node_headers__"].astype("U")
-        centroidHeaders: Array = data["__centroid_headers__"].astype("U")
+        nodeHeaders: Array = data["__node_headers__"]
+        centroidHeaders: Array = data["__centroid_headers__"]
         return Database(
             nodes, elements, types, nodeSets, elementSets,
             times, nodeHeaders, centroidHeaders, nodeData, centroidData,
@@ -50,12 +51,26 @@ def _loadOdb(odbPath: str | Path) -> Database:
                 raise RuntimeError("error in 'odb2npz.py'\n  " + log.readline().strip())
     return _loadNpz(odbzPath)
 
+def _loadRst(rstPath: str | Path) -> Database:
+    """Loads the requested *.rst file."""
+    if not isinstance(rstPath, Path): rstPath = Path(rstPath)
+    rstPath = rstPath.resolve()
+    rstzPath: Path = rstPath.with_suffix(".rstz")
+    if rstPath.exists() and rstzPath.exists() and rstzPath.stat().st_mtime > rstPath.stat().st_mtime:
+        print("Using cached RSTZ database.")
+    else:
+        print("RSTZ database not found or outdated. Converting RST to RSTZ...")
+        script: str = str(resources.files("odblab.scripts") / "rst2npz.py")
+        subprocess.run((sys.executable, script, "--rst", str(rstPath)), shell=True, check=True)
+    return _loadNpz(rstzPath)
+
 def load(filePath: str | Path) -> Database:
     """Loads the requested finite element analysis database file."""
     if not isinstance(filePath, Path): filePath = Path(filePath)
     filePath = filePath.resolve()
     if not filePath.exists(): raise FileNotFoundError(filePath)
     match filePath.suffix.lower():
-        case ".odbz": return _loadNpz(filePath)
+        case ".odbz" | ".rstz": return _loadNpz(filePath)
         case ".odb": return _loadOdb(filePath)
+        case ".rst": return _loadRst(filePath)
         case _: raise ValueError(f"unexpected file extension '{filePath.suffix}': {filePath}")

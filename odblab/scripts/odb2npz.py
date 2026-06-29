@@ -49,7 +49,7 @@ def extractMesh(odbPath):
 
         # initialize storage
         nodes = np.empty(shape=(nodeCount, 3), dtype=np.float32)
-        types = np.empty(shape=(elementCount,), dtype="S")
+        types = np.empty(shape=(elementCount,), dtype="U")
         elements = np.empty(shape=(elementCount, 0), dtype=np.int32)
 
         # lookup mappings: (entity name, node/element label) -> node/element index
@@ -75,7 +75,7 @@ def extractMesh(odbPath):
                 if elementSize > elements.shape[1]:
                     elements = np.pad(elements, ((0, 0), (0, elementSize - elements.shape[1])), constant_values=-1)
                 if typeLength > types.dtype.itemsize:
-                    types = types.astype("S%d" % typeLength)
+                    types = types.astype("U%d" % typeLength)
                 elements[elementOffset + index, :elementSize] = connectivity
                 types[elementOffset + index] = element.type
 
@@ -185,7 +185,7 @@ def extractResults(fieldOutputs, originalPosition, extrapolatedPosition, labelMa
 
     # done
     if not results: return None
-    else: return np.concatenate(results, axis=1), np.array(headers, dtype="S")
+    else: return np.concatenate(results, axis=1), np.array(headers, dtype="U")
 
 def extractFrameWorker(args): return extractFrame(*args)
 def extractFrame(odbPath, stepName, frameIndex, nodeMap, elementMap):
@@ -262,8 +262,8 @@ def mergeResults(results, nodeMap, elementMap):
     # done
     return {
         "__times__": np.array(object=list(timeMap.keys()), dtype=np.float32),
-        "__node_headers__": np.array(object=list(nodeHeaderMap.keys()), dtype="S"),
-        "__centroid_headers__": np.array(object=list(centroidHeaderMap.keys()), dtype="S"),
+        "__node_headers__": np.array(object=list(nodeHeaderMap.keys()), dtype="U"),
+        "__centroid_headers__": np.array(object=list(centroidHeaderMap.keys()), dtype="U"),
         "__node_data__": mergedNodeData,
         "__centroid_data__": mergedCentroidData,
     }

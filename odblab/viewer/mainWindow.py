@@ -78,7 +78,7 @@ class MainWindow(QMainWindow):
         self._viewMenu.setTitle("View")
         self._menuBar.addMenu(self._viewMenu)
 
-        # view > region
+        # view > region menu
         self._viewRegionMenu: QMenu = QMenu(self._viewMenu)
         self._viewRegionMenu.setTitle("Region")
         self._viewRegionMenu.setIcon(QIcon(str(files("odblab.icons") / "view-region.svg")))
