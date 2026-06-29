@@ -2,10 +2,10 @@ import warnings
 from odblab.core import Database
 from odblab.viewer.util import getCellType
 from odblab.viewer import RenderStyles, Renderable, Legend
-from vtkmodules.vtkCommonCore import vtkPoints, vtkFloatArray
+from vtkmodules.vtkCommonCore import vtkPoints, vtkFloatArray, vtkIntArray
 from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
 from vtkmodules.vtkCommonTransforms import vtkTransform
-from vtkmodules.vtkFiltersCore import vtkExtractEdges
+from vtkmodules.vtkFiltersCore import vtkExtractEdges, vtkThreshold
 from vtkmodules.vtkFiltersGeneral import vtkWarpVector
 from vtkmodules.vtkFiltersGeometry import vtkUnstructuredGridGeometryFilter
 from vtkmodules.vtkRenderingCore import vtkDataSetMapper, vtkActor
@@ -27,6 +27,10 @@ class MeshView(Renderable):
         self._renderStyle: RenderStyles = RenderStyles.Filled
 
         # data set
+        self._visibilityMask: vtkIntArray = vtkIntArray()
+        self._visibilityMask.SetNumberOfValues(self._database.elements.shape[0])
+        self._visibilityMask.SetName("VisibilityMask")
+        self._visibilityMask.Fill(1)
         self._warpVectors: vtkFloatArray = vtkFloatArray()
         self._warpVectors.SetNumberOfComponents(3)
         self._warpVectors.SetNumberOfTuples(self._database.nodes.shape[0])
@@ -45,6 +49,7 @@ class MeshView(Renderable):
         self._grid.GetPointData().SetVectors(self._warpVectors)
         self._grid.GetPointData().SetScalars(self._pointScalars)
         self._grid.GetCellData().SetScalars(self._cellScalars)
+        self._grid.GetCellData().AddArray(self._visibilityMask)
         self._grid.SetPoints(self._points)
         for type, connectivity in zip(self._database.types, self._database.elements):
             connectivity = connectivity.compressed()
@@ -57,9 +62,16 @@ class MeshView(Renderable):
                     "unmapped elements are not rendered"
                 )
 
+        # visibility filter
+        self._visibilityFilter: vtkThreshold = vtkThreshold()
+        self._visibilityFilter.SetInputData(self._grid)
+        self._visibilityFilter.SetInputArrayToProcess("VisibilityMask", vtkUnstructuredGrid.FIELD_ASSOCIATION_CELLS)
+        self._visibilityFilter.SetThresholdFunction(vtkThreshold.THRESHOLD_UPPER)
+        self._visibilityFilter.SetUpperThreshold(1)
+
         # warp filter
         self._warpFilter: vtkWarpVector = vtkWarpVector()
-        self._warpFilter.SetInputData(self._grid)
+        self._warpFilter.SetInputConnection(self._visibilityFilter.GetOutputPort())
         self._warpFilter.SetScaleFactor(1.0)
 
         # mapper
@@ -140,6 +152,12 @@ class MeshView(Renderable):
         if scale is not None:
             self._warpFilter.SetScaleFactor(scale)
             self._warpFilter.Modified()
+
+    def applyCellVisibilityMask(self, mask: Array) -> None:
+        """Applies the provided cell visibility boolean mask."""
+        for i in range(self._database.elements.shape[0]):
+            self._visibilityMask.SetValue(i, mask[i])
+        self._visibilityMask.Modified()
 
     def mirror(self, planeYZ: bool = False, planeXZ: bool = False, planeXY: bool = False) -> None:
         """Mirrors the displayed object."""

@@ -1,4 +1,5 @@
 import numpy as np
+from numpy import ndarray as Array
 from odblab.core import Database
 from odblab.viewer import Viewport, MeshView, RenderStyles, Spectrums, Views
 from importlib.resources import files
@@ -76,6 +77,16 @@ class MainWindow(QMainWindow):
         self._viewMenu: QMenu = QMenu(self._menuBar)
         self._viewMenu.setTitle("View")
         self._menuBar.addMenu(self._viewMenu)
+
+        # view > region
+        self._viewRegionMenu: QMenu = QMenu(self._viewMenu)
+        self._viewRegionMenu.setTitle("Region")
+        self._viewRegionMenu.setIcon(QIcon(str(files("odblab.icons") / "view-region.svg")))
+        self._viewMenu.addMenu(self._viewRegionMenu)
+        self._viewRegionElementSetsActionGroup: QActionGroup = QActionGroup(self._viewRegionMenu)
+        self._viewRegionElementTypesActionGroup: QActionGroup = QActionGroup(self._viewRegionMenu)
+        self._viewRegionElementSetsActionGroup.setExclusive(True)
+        self._viewRegionElementTypesActionGroup.setExclusive(False)
 
         # view > mirror menu
         self._viewMirrorMenu: QMenu = QMenu(self._viewMenu)
@@ -240,6 +251,20 @@ class MainWindow(QMainWindow):
         self._animationTimer.setInterval(100)
         self._animationTimer.timeout.connect(self._onAnimationTimerTimeout)
 
+    def _onViewRegionActionTriggered(self) -> None:
+        """On view > region action triggered."""
+        if self._viewport.meshView is None: return
+        db: Database = self._viewport.meshView.database
+        region: str = self._viewRegionElementSetsActionGroup.checkedAction().text()
+        visibilityMask: Array = np.zeros(shape=(db.elements.shape[0],), dtype=np.int32)
+        if region == "ALL ELEMENTS": visibilityMask[:] = 1
+        else: visibilityMask[db.elementSets[region]] = 1
+        for action in self._viewRegionElementTypesActionGroup.actions():
+            if not action.isChecked():
+                visibilityMask[np.where(db.types == action.text())[0]] = 0
+        self._viewport.meshView.applyCellVisibilityMask(visibilityMask)
+        self._viewport.draw()
+
     def _onViewMirrorActionTriggered(self) -> None:
         """On view > mirror action triggered."""
         if self._viewport.meshView is None: return
@@ -253,10 +278,7 @@ class MainWindow(QMainWindow):
     def _onViewRenderStyleActionTriggered(self) -> None:
         """On view > render style action triggered."""
         if self._viewport.meshView is None: return
-        for action in self._viewRenderStyleActionGroup.actions():
-            if action.isChecked():
-                self._viewport.meshView.setRenderStyle(RenderStyles(action.text()))
-                break
+        self._viewport.meshView.setRenderStyle(RenderStyles(self._viewRenderStyleActionGroup.checkedAction().text()))
         self._viewport.draw()
 
     def _onViewRenderStyleLightingActionTriggered(self) -> None:
@@ -267,10 +289,7 @@ class MainWindow(QMainWindow):
 
     def _onViewColormapActionTriggered(self) -> None:
         """On view > colormap action triggered."""
-        for action in self._viewColormapActionGroup.actions():
-            if action.isChecked():
-                self._viewport.legend.rebuild(Spectrums(action.text()))
-                break
+        self._viewport.legend.rebuild(Spectrums(self._viewColormapActionGroup.checkedAction().text()))
         self._viewport.draw()
 
     def _onViewDeformationScaleFactorActionTriggered(self) -> None:
@@ -361,3 +380,26 @@ class MainWindow(QMainWindow):
                     else:
                         child = QTreeWidgetItem(parent, (token,))
                     parent = child
+
+        # dynamic menus
+        while len(actions := self._viewRegionMenu.actions()) > 0:
+            self._viewRegionMenu.removeAction(action := actions[-1])
+            action.deleteLater()
+        self._viewRegionMenu.addSection("Element Sets")
+        for i, name in enumerate(["ALL ELEMENTS"] + [*database.elementSets.keys()]):
+            action: QAction = QAction(self._viewRegionMenu)
+            action.setText(name)
+            action.setChecked(i == 0)
+            action.setCheckable(True)
+            action.triggered.connect(self._onViewRegionActionTriggered)
+            self._viewRegionMenu.addAction(action)
+            self._viewRegionElementSetsActionGroup.addAction(action)
+        self._viewRegionMenu.addSection("Element Types")
+        for type in np.unique(database.types):
+            action: QAction = QAction(self._viewRegionMenu)
+            action.setText(type)
+            action.setChecked(True)
+            action.setCheckable(True)
+            action.triggered.connect(self._onViewRegionActionTriggered)
+            self._viewRegionMenu.addAction(action)
+            self._viewRegionElementTypesActionGroup.addAction(action)
