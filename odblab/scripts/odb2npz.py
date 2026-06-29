@@ -1,6 +1,6 @@
 #-----------------------------------------------------------------------------------------------------------------------
 # A multiprocessing Python script to extract data from an Abaqus output database (*.odb).
-# The extracted data is stored in the corresponding *.npz file.
+# The extracted data is stored in the corresponding *.odbz file.
 # Abaqus must be installed on the system.
 #-----------------------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026, Carlos Souto and Diego Salamanca
@@ -11,12 +11,14 @@
 # type: ignore
 
 import os
+import pickle
+import shutil
+import tempfile
 import odbAccess
 import numpy as np
-import multiprocessing
 from argparse import ArgumentParser
 from collections import OrderedDict
-from itertools import accumulate, chain
+from multiprocessing import Process, Pool, cpu_count
 from abaqusConstants import NODAL, ELEMENT_NODAL, CENTROID, INTEGRATION_POINT
 
 def autoUpgradeOdb(odbPath):
@@ -31,7 +33,7 @@ def autoUpgradeOdb(odbPath):
         os.rename(upgradedOdbPath, existingOdbPath)
         print("The ODB was upgraded successfully.")
 
-def extractMesh(odbPath):
+def extractMesh(odbPath, tempDir):
     """Unifies and extracts the finite element mesh."""
     odb = None
     try:
@@ -39,13 +41,11 @@ def extractMesh(odbPath):
         # open database and perform counts
         odb = odbAccess.openOdb(path=odbPath, readOnly=True, readInternalSets=False)
         entities = [odb.rootAssembly] + list(odb.rootAssembly.instances.values())
-        nodeOffsets = [0]
-        elementOffsets = [0]
+        nodeOffsets, elementOffsets = [0], [0]
         for entity in entities:
             nodeOffsets.append(len(entity.nodes) + nodeOffsets[-1])
             elementOffsets.append(len(entity.elements) + elementOffsets[-1])
-        nodeCount = nodeOffsets[-1]
-        elementCount = elementOffsets[-1]
+        nodeCount, elementCount = nodeOffsets[-1], elementOffsets[-1]
 
         # initialize storage
         nodes = np.empty(shape=(nodeCount, 3), dtype=np.float32)
@@ -59,8 +59,7 @@ def extractMesh(odbPath):
         # entity loop
         for entityIndex, entity in enumerate(entities):
             entityName = entity.name if entity != odb.rootAssembly else "__root__"
-            nodeOffset = nodeOffsets[entityIndex]
-            elementOffset = elementOffsets[entityIndex]
+            nodeOffset, elementOffset = nodeOffsets[entityIndex], elementOffsets[entityIndex]
 
             # extract nodes
             for index, node in enumerate(entity.nodes):
@@ -73,244 +72,230 @@ def extractMesh(odbPath):
                 connectivity = [nodeMap[(entityName, label)] for label in element.connectivity]
                 elementSize, typeLength = len(connectivity), len(element.type)
                 if elementSize > elements.shape[1]:
-                    elements = np.pad(elements, ((0, 0), (0, elementSize - elements.shape[1])), constant_values=-1)
-                if typeLength > types.dtype.itemsize:
+                    elements = np.pad(
+                        elements, ((0, 0), (0, elementSize - elements.shape[1])),
+                        "constant", constant_values=-1
+                    )
+                if typeLength > types.dtype.itemsize//np.dtype("U1").itemsize:
                     types = types.astype("U%d" % typeLength)
                 elements[elementOffset + index, :elementSize] = connectivity
                 types[elementOffset + index] = element.type
 
-        # save mesh
-        mesh = {"__nodes__": nodes, "__types__": types, "__elements__": elements}
-
         # entity loop (after mappings)
+        sets = dict()
         for entityIndex, entity in enumerate(entities):
             entityName = entity.name if entity != odb.rootAssembly else "__root__"
 
-            # extract node sets
-            if entity == odb.rootAssembly:
-                for setName, nodeSet in entity.nodeSets.items():
-                    mesh["__node_set__.\"%s\"" % setName] = np.array(object=sorted(set(
-                        nodeMap[(instance.name, node.label)]
-                        for instance, nodes in zip(nodeSet.instances, nodeSet.nodes)
-                        for node in nodes
-                    )), dtype=np.int32)
-            else:
-                for setName, nodeSet in entity.nodeSets.items():
-                    mesh["__node_set__.\"%s.%s\"" % (entityName, setName)] = np.array(object=sorted(set(
-                        nodeMap[(entityName, node.label)]
-                        for node in nodeSet.nodes
-                    )), dtype=np.int32)
+            # extract node/element sets
+            for suffix, setAttribute, itemsAttribute, indexMap in (
+                ("__node_set__", "nodeSets", "nodes", nodeMap),
+                ("__element_set__", "elementSets", "elements", elementMap),
+            ):
+                if entity == odb.rootAssembly:
+                    for setName, entitySet in getattr(entity, setAttribute).items():
+                        sets["%s.\"%s\"" % (suffix, setName)] = np.array(object=sorted(set(
+                            indexMap[(instance.name, item.label)]
+                            for instance, items in zip(entitySet.instances, getattr(entitySet, itemsAttribute))
+                            for item in items
+                        )), dtype=np.int32)
+                else:
+                    for setName, entitySet in getattr(entity, setAttribute).items():
+                        sets["%s.\"%s.%s\"" % (suffix, entityName, setName)] = np.array(object=sorted(set(
+                            indexMap[(entityName, item.label)]
+                            for item in getattr(entitySet, itemsAttribute)
+                        )), dtype=np.int32)
 
-            # extract element sets
-            if entity == odb.rootAssembly:
-                for setName, elementSet in entity.elementSets.items():
-                    mesh["__element_set__.\"%s\"" % setName] = np.array(object=sorted(set(
-                        elementMap[(instance.name, element.label)]
-                        for instance, elements in zip(elementSet.instances, elementSet.elements)
-                        for element in elements
-                    )), dtype=np.int32)
-            else:
-                for setName, elementSet in entity.elementSets.items():
-                    mesh["__element_set__.\"%s.%s\"" % (entityName, setName)] = np.array(object=sorted(set(
-                        elementMap[(entityName, element.label)]
-                        for element in elementSet.elements
-                    )), dtype=np.int32)
+        # save mesh
+        np.save(os.path.join(tempDir, "__nodes__.npy"), nodes)
+        np.save(os.path.join(tempDir, "__types__.npy"), types)
+        np.save(os.path.join(tempDir, "__elements__.npy"), elements)
+        np.savez(os.path.join(tempDir, "__sets__.npz"), **sets)
 
-        # done
-        return mesh, nodeMap, elementMap
+        # save maps
+        with open(os.path.join(tempDir, "__mesh_metadata__.pkl"), "wb") as file:
+            pickle.dump({"__node_map__": nodeMap, "__element_map__": elementMap}, file)
 
     finally:
         if odb is not None:
             odb.close()
 
-def extractResults(fieldOutputs, originalPosition, extrapolatedPosition, labelMap):
+def extractResultsMetadata(odbPath, tempDir):
+    """Extracts the field output metadata."""
+    odb = None
+    try:
+        odb = odbAccess.openOdb(path=odbPath, readOnly=True, readInternalSets=False)
+        nodeHeaders, centroidHeaders, frameInfo = OrderedDict(), OrderedDict(), OrderedDict()
+        for stepName, step in odb.steps.items():
+            for frameIndex, frame in enumerate(step.frames):
+                time = step.totalTime + frame.frameValue
+                if time not in frameInfo:
+                    frameInfo[time] = (stepName, frameIndex, time)
+                for fieldOutput in frame.fieldOutputs.values():
+                    headers = [fieldOutput.name + "." + label for label in fieldOutput.componentLabels]
+                    headers = headers or [fieldOutput.name]
+                    if fieldOutput.locations[0].position in (NODAL, INTEGRATION_POINT):
+                        nodeHeaders.update((header, None) for header in headers)
+                    if fieldOutput.locations[0].position in (CENTROID, INTEGRATION_POINT):
+                        centroidHeaders.update((header, None) for header in headers)
+        nodeHeaders = np.array(list(nodeHeaders.keys()), dtype="U")
+        centroidHeaders = np.array(list(centroidHeaders.keys()), dtype="U")
+        times = np.sort(np.array([time for _, _, time in frameInfo.values()], dtype=np.float32))
+        np.save(os.path.join(tempDir, "__times__.npy"), times)
+        np.save(os.path.join(tempDir, "__node_headers__.npy"), nodeHeaders)
+        np.save(os.path.join(tempDir, "__centroid_headers__.npy"), centroidHeaders)
+        with open(os.path.join(tempDir, "__field_metadata__.pkl"), "wb") as file:
+            pickle.dump(file=file, obj={
+                "__node_header_map__": {name: index for index, name in enumerate(nodeHeaders)},
+                "__centroid_header_map__": {name: index for index, name in enumerate(centroidHeaders)},
+                "__frame_info__": sorted(frameInfo.values(), key=lambda x: x[-1])
+            })
+    finally:
+        if odb is not None:
+            odb.close()
+
+def extractResultsWorker(args): return extractResults(*args)
+def extractResults(odbPath, tempDir, timeIndex, originalPosition, extrapolatedPosition):
     """Extracts the field outputs."""
-
-    # loop field outputs
-    headers = list()
-    results = list()
-    for fieldOutput in fieldOutputs:
-        if fieldOutput.locations[0].position != originalPosition: continue
-
-        # detect if smoothing is required
-        smooth = originalPosition == INTEGRATION_POINT and extrapolatedPosition == ELEMENT_NODAL
-
-        # compute invariants before extrapolation
-        invariants = [fieldOutput.getScalarField(invariant=inv) for inv in fieldOutput.validInvariants]
-        fields = [fieldOutput] + invariants
-
-        # interpolate/extrapolate
-        if originalPosition != extrapolatedPosition:
-            fields = [field.getSubset(position=extrapolatedPosition) for field in fields]
-
-        # generate column headers
-        variables = [
-            fieldOutput.name + "." + label
-            for label in list(fieldOutput.componentLabels) + [inv.name for inv in fieldOutput.validInvariants]
-        ] or [fieldOutput.name]
-        variables = [".".join(var.split()) for var in variables]
-
-        # pre-allocate arrays
-        if smooth:
-            matrix = np.zeros(shape=(len(labelMap), len(variables)), dtype=np.float32)
-            counts = np.zeros(shape=(matrix.shape[0], 1), dtype=np.int32)
-        else:
-            matrix = np.full(shape=(len(labelMap), len(variables)), fill_value=np.nan, dtype=np.float32)
-
-        # extract data
-        columnIndex = 0
-        for field in fields:
-            columnCount = len(field.componentLabels) if field.componentLabels else 1
-            for block in field.bulkDataBlocks:
-                entityName = block.instance.name if block.instance else "__root__"
-                labels = block.elementLabels if extrapolatedPosition == CENTROID else block.nodeLabels
-                rowIndices = [labelMap[(entityName, label)] for label in labels]
-                if not smooth:
-                    matrix[rowIndices, columnIndex : columnIndex + columnCount] = block.data
-                else:
-                    np.add.at(matrix[:, columnIndex : columnIndex + columnCount], rowIndices, block.data)
-                    if columnIndex == 0: np.add.at(counts[:, 0], rowIndices, 1)
-            columnIndex += columnCount
-
-        # nodal smoothing/averaging
-        if smooth:
-            unmapped = counts[:, 0] == 0
-            counts[unmapped] = 1
-            matrix /= counts
-            matrix[unmapped, :] = np.nan
-
-        # store results
-        results.append(matrix)
-        headers.extend(variables)
-
-    # done
-    if not results: return None
-    else: return np.concatenate(results, axis=1), np.array(headers, dtype="U")
-
-def extractFrameWorker(args): return extractFrame(*args)
-def extractFrame(odbPath, stepName, frameIndex, nodeMap, elementMap):
-    """Extracts the full step frame."""
     odb = None
     try:
 
-        # open database
+        # open database and load data from disk
         odb = odbAccess.openOdb(path=odbPath, readOnly=True, readInternalSets=False)
-        step = odb.steps[stepName]
-        frame = step.frames[frameIndex]
-        fieldOutputs = frame.fieldOutputs.values()
-        data = dict()
-        data["__time__"] = step.totalTime + frame.frameValue
+        with open(os.path.join(tempDir, "__mesh_metadata__.pkl"), "rb") as file: meshMetadata = pickle.load(file)
+        with open(os.path.join(tempDir, "__field_metadata__.pkl"), "rb") as file: fieldMetadata = pickle.load(file)
+        stepName, frameIndex, _ = fieldMetadata["__frame_info__"][timeIndex]
+        if extrapolatedPosition == CENTROID:
+            indexMap = meshMetadata["__element_map__"]
+            headerMap = fieldMetadata["__centroid_header_map__"]
+            diskArray = np.load(os.path.join(tempDir, "__centroid_data__.npy"), "r+")
+            labelsAttribute = "elementLabels"
+        else:
+            indexMap = meshMetadata["__node_map__"]
+            headerMap = fieldMetadata["__node_header_map__"]
+            diskArray = np.load(os.path.join(tempDir, "__node_data__.npy"), "r+")
+            labelsAttribute = "nodeLabels"
 
-        # extract centroid data
-        centroidData = extractResults(fieldOutputs, INTEGRATION_POINT, CENTROID, elementMap)
-        if centroidData:
-            data["__centroid_data__"] = centroidData[0]
-            data["__centroid_headers__"] = centroidData[1]
+        # loop field outputs
+        for field in odb.steps[stepName].frames[frameIndex].fieldOutputs.values():
+            if field.locations[0].position != originalPosition: continue
+            if originalPosition != extrapolatedPosition: field = field.getSubset(position=extrapolatedPosition)
+            isSmoothingRequired = extrapolatedPosition == ELEMENT_NODAL
+            headers = [field.name + "." + label for label in field.componentLabels] or [field.name]
 
-        # extract node data
-        nodeData = extractResults(fieldOutputs, NODAL, NODAL, nodeMap)
-        elementNodeData = extractResults(fieldOutputs, INTEGRATION_POINT, ELEMENT_NODAL, nodeMap)
-        if nodeData or elementNodeData:
-            if nodeData and elementNodeData:
-                nodeData = np.concatenate((nodeData[0], elementNodeData[0]), axis=1), \
-                    np.concatenate((nodeData[1], elementNodeData[1]), axis=0)
+            # pre-allocate arrays
+            if isSmoothingRequired:
+                matrix = np.zeros(shape=(len(indexMap), len(headers)), dtype=np.float32)
+                counts = np.zeros(shape=(matrix.shape[0], 1), dtype=np.int32)
             else:
-                nodeData = nodeData or elementNodeData
-            data["__node_data__"] = nodeData[0]
-            data["__node_headers__"] = nodeData[1]
+                matrix = np.full(shape=(len(indexMap), len(headers)), fill_value=np.nan, dtype=np.float32)
+
+            # extract data
+            for block in field.bulkDataBlocks:
+                entityName = block.instance.name if block.instance else "__root__"
+                i = [indexMap[(entityName, label)] for label in getattr(block, labelsAttribute)]
+                if not isSmoothingRequired:
+                    matrix[i, :] = block.data
+                else:
+                    np.add.at(matrix, (i, slice(None)), block.data)
+                    np.add.at(counts, (i, 0), 1)
+
+            # nodal smoothing/averaging
+            if isSmoothingRequired:
+                unmappedMask = counts[:, 0] == 0
+                counts[unmappedMask] = 1
+                matrix /= counts
+                matrix[unmappedMask, :] = np.nan
+
+            # save results
+            for k, header in enumerate(headers):
+                diskArray[headerMap[header], :, timeIndex] = matrix[:, k]
 
         # done
-        return data
+        diskArray.flush()
 
     finally:
         if odb is not None:
             odb.close()
 
-def mergeResults(results, nodeMap, elementMap):
-    """Merges the frame-based results into a single array."""
-
-    # build value to index mappings
-    timeMap = OrderedDict()
-    nodeHeaderMap = OrderedDict()
-    centroidHeaderMap = OrderedDict()
-    for resultBlock in results:
-        time = resultBlock["__time__"]
-        if time not in timeMap: timeMap[time] = len(timeMap)
-        for nodeHeader in resultBlock.get("__node_headers__", list()):
-            if nodeHeader not in nodeHeaderMap: nodeHeaderMap[nodeHeader] = len(nodeHeaderMap)
-        for centroidHeader in resultBlock.get("__centroid_headers__", list()):
-            if centroidHeader not in centroidHeaderMap: centroidHeaderMap[centroidHeader] = len(centroidHeaderMap)
-
-    # merge data
-    mergedNodeData = np.full(
-        shape=(len(nodeHeaderMap), len(nodeMap), len(timeMap)),
-        fill_value=np.nan, dtype=np.float32
-    )
-    mergedCentroidData = np.full(
-        shape=(len(centroidHeaderMap), len(elementMap), len(timeMap)),
-        fill_value=np.nan, dtype=np.float32
-    )
-    for resultBlock in results:
-        timeIndex = timeMap[resultBlock["__time__"]]
-        if "__node_data__" in resultBlock:
-            headerIndices = [nodeHeaderMap[header] for header in resultBlock["__node_headers__"]]
-            mergedNodeData[headerIndices, :, timeIndex] = resultBlock["__node_data__"].T
-        if "__centroid_data__" in resultBlock:
-            headerIndices = [centroidHeaderMap[header] for header in resultBlock["__centroid_headers__"]]
-            mergedCentroidData[headerIndices, :, timeIndex] = resultBlock["__centroid_data__"].T
-
-    # done
-    return {
-        "__times__": np.array(object=list(timeMap.keys()), dtype=np.float32),
-        "__node_headers__": np.array(object=list(nodeHeaderMap.keys()), dtype="U"),
-        "__centroid_headers__": np.array(object=list(centroidHeaderMap.keys()), dtype="U"),
-        "__node_data__": mergedNodeData,
-        "__centroid_data__": mergedCentroidData,
-    }
-
-def main(odbPath):
+def main(odbPath, tempDir):
     """The main block."""
     autoUpgradeOdb(odbPath)
     print("Extracting data from: " + odbPath)
 
-    # extract mesh
-    print("Extracting finite element mesh...")
-    data, nodeMap, elementMap = extractMesh(odbPath)
+    # mesh and field metadata extraction
+    print("Extracting finite element mesh and field output metadata using 2 CPU(s)...")
+    extractMeshProcess = Process(target=extractMesh, args=(odbPath, tempDir))
+    extractResultsMetadataProcess = Process(target=extractResultsMetadata, args=(odbPath, tempDir))
+    extractMeshProcess.start()
+    extractResultsMetadataProcess.start()
+    extractMeshProcess.join()
+    extractResultsMetadataProcess.join()
 
-    # prepare parallel workload
-    cpuCount = multiprocessing.cpu_count()
-    odb = odbAccess.openOdb(path=odbPath, readOnly=True, readInternalSets=False)
-    tasks = [
-        (odbPath, stepName, frameIndex, nodeMap, elementMap)
-        for stepName, step in odb.steps.items()
-        for frameIndex in range(len(step.frames))
-    ]
-    odb.close()
+    # initialize disk storage for result extraction
+    print("Initializing field output storage...")
+    with open(os.path.join(tempDir, "__mesh_metadata__.pkl"), "rb") as file: meshMetadata = pickle.load(file)
+    with open(os.path.join(tempDir, "__field_metadata__.pkl"), "rb") as file: fieldMetadata = pickle.load(file)
+    nodeCount = len(meshMetadata["__node_map__"])
+    elementCount = len(meshMetadata["__element_map__"])
+    nodeHeaderCount = len(fieldMetadata["__node_header_map__"])
+    centroidHeaderCount = len(fieldMetadata["__centroid_header_map__"])
+    frameCount = len(fieldMetadata["__frame_info__"])
+    for file, headerCount, entityCount in (
+        ("__node_data__.npy", nodeHeaderCount, nodeCount),
+        ("__centroid_data__.npy", centroidHeaderCount, elementCount),
+    ):
+        diskArray = np.lib.format.open_memmap(
+            filename=os.path.join(tempDir, file), mode="w+", dtype=np.float32,
+            shape=(headerCount, entityCount, frameCount)
+        )
+        diskArray.fill(np.nan)
+        diskArray.flush()
 
     # extract field outputs in parallel
+    cpuCount = cpu_count()
     print("Extracting field outputs using %d CPU(s)..." % cpuCount)
-    pool = multiprocessing.Pool(processes=cpuCount)
-    results = pool.map(extractFrameWorker, tasks)
+    tasks = list()
+    for timeIndex in range(frameCount):
+        tasks.append((odbPath, tempDir, timeIndex, NODAL, NODAL))
+        tasks.append((odbPath, tempDir, timeIndex, CENTROID, CENTROID))
+        tasks.append((odbPath, tempDir, timeIndex, INTEGRATION_POINT, CENTROID))
+        tasks.append((odbPath, tempDir, timeIndex, INTEGRATION_POINT, ELEMENT_NODAL))
+    pool = Pool(processes=cpuCount)
+    pool.map(extractResultsWorker, tasks)
     pool.close()
     pool.join()
 
-    # merge and write to disk
-    print("Saving data to disk...")
-    data.update(mergeResults(results, nodeMap, elementMap))
+    # compile temporary files into the final database
+    print("Compiling final ODBZ database...")
     odbzPath = os.path.splitext(odbPath)[0] + ".odbz"
-    with open(odbzPath, "wb") as odbz: np.savez(odbz, allow_pickle=False, **data)
+    with open(odbzPath, "wb") as odbz:
+        data = {
+            "__nodes__": np.load(os.path.join(tempDir, "__nodes__.npy"), "r"),
+            "__types__": np.load(os.path.join(tempDir, "__types__.npy"), "r"),
+            "__elements__": np.load(os.path.join(tempDir, "__elements__.npy"), "r"),
+            "__times__": np.load(os.path.join(tempDir, "__times__.npy"), "r"),
+            "__node_data__": np.load(os.path.join(tempDir, "__node_data__.npy"), "r"),
+            "__centroid_data__": np.load(os.path.join(tempDir, "__centroid_data__.npy"), "r"),
+            "__node_headers__": np.load(os.path.join(tempDir, "__node_headers__.npy"), "r"),
+            "__centroid_headers__": np.load(os.path.join(tempDir, "__centroid_headers__.npy"), "r"),
+        }
+        data.update(np.load(os.path.join(tempDir, "__sets__.npz"), "r"))
+        np.savez(odbz, **data)
 
     # done
     print("Done extracting. Data stored in: " + odbzPath)
 
 if __name__ == "__main__":
+    tempDir = tempfile.mkdtemp()
     with open("odb2npz.log", "w") as log:
         try:
             argParser = ArgumentParser()
             argParser.add_argument("--odb", dest="odb", type=os.path.abspath, required=True, help="The ODB file path.")
             args = argParser.parse_args()
-            main(args.odb)
+            main(args.odb, tempDir)
             log.write("EXIT_SUCCESS\n")
         except Exception as e:
             log.write("EXIT_FAILURE\n")
             log.write("%s: %s\n" % (type(e).__name__, e))
+        finally:
+            shutil.rmtree(tempDir, ignore_errors=True)

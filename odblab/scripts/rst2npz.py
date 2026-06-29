@@ -129,7 +129,6 @@ def main(rstPath):
     with open(rstzPath, "wb") as rstz:
         np.savez(
             file=rstz,
-            allow_pickle=False,
             __nodes__=np.asarray(nodes, dtype=np.float32),
             __types__=np.asarray(types, dtype="U"),
             __elements__=np.asarray(elements, dtype=np.int32),
