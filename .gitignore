@@ -4,6 +4,7 @@
 # ... except these:
 !.gitignore
 !.gitattributes
+!pyproject.toml
 !requirements.txt
 !*.py
 !*.svg
