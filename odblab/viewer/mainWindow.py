@@ -263,6 +263,8 @@ class MainWindow(QMainWindow):
             if not action.isChecked():
                 visibilityMask[np.where(db.types == action.text())[0]] = 0
         self._viewport.meshView.applyCellVisibilityMask(visibilityMask)
+        self._viewport.plotNodeContour(draw=False)
+        self._viewport.plotCentroidContour(draw=False)
         self._viewport.draw()
 
     def _onViewMirrorActionTriggered(self) -> None:

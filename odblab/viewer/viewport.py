@@ -134,8 +134,9 @@ class Viewport(QWidget):
 
         # get scalar range
         subset: Array
-        if self._useGlobalRange: subset = self._meshView.database.nodeData[headerIndex, :, :]
-        else: subset = self._meshView.database.nodeData[headerIndex, :, timeIndex]
+        regionMask: Array = self._meshView.getPointVisibilityMask()
+        if self._useGlobalRange: subset = self._meshView.database.nodeData[headerIndex, regionMask, :]
+        else: subset = self._meshView.database.nodeData[headerIndex, regionMask, timeIndex]
         minValue: float = float(np.nanmin(subset))
         maxValue: float = float(np.nanmax(subset))
 
@@ -162,8 +163,9 @@ class Viewport(QWidget):
 
         # get scalar range
         subset: Array
-        if self._useGlobalRange: subset = self._meshView.database.centroidData[headerIndex, :, :]
-        else: subset = self._meshView.database.centroidData[headerIndex, :, timeIndex]
+        regionMask: Array = self._meshView.getCellVisibilityMask()
+        if self._useGlobalRange: subset = self._meshView.database.centroidData[headerIndex, regionMask, :]
+        else: subset = self._meshView.database.centroidData[headerIndex, regionMask, timeIndex]
         minValue: float = float(np.nanmin(subset))
         maxValue: float = float(np.nanmax(subset))
 

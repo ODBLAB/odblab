@@ -1,9 +1,10 @@
+import os
 import numpy as np
 from numpy import ndarray as Array
 from numpy.ma import MaskedArray
-from dataclasses import dataclass, fields
-from collections.abc import Sequence, Mapping
-from typing import Literal, Any
+from dataclasses import dataclass
+from collections.abc import Sequence, Mapping, Collection, Callable
+from typing import Literal
 
 @dataclass(frozen=True)
 class Database:
@@ -29,11 +30,31 @@ class Database:
 
     def __post_init__(self) -> None:
         """Post dataclass object initialization."""
-        for field in fields(self):
-            value: Any = getattr(self, field.name)
-            for x in value.values() if isinstance(value, dict) else (value,):
-                if isinstance(x, (Array, MaskedArray)):
-                    x.setflags(write=False)
+        for array in (
+            self.nodes, self.elements, self.types, self.times, self.nodeHeaders, self.centroidHeaders, self.nodeData,
+            self.centroidData, *self.nodeSets.values(), *self.elementSets.values()
+        ):
+            array.setflags(write=False)
+
+    def __repr__(self) -> str:
+        """Readable database summary."""
+        indent: str = " "*2
+        join: Callable[[Collection[str]], str] = lambda items: \
+            "\n".join(f"{indent*2}\"{item}\"" for item in items) if len(items) else f"{indent*2}None"
+        typeSummary: str = "; ".join(f"{t}: {c}" for t, c in zip(*np.unique(self.types, return_counts=True)))
+        timeSummary: str = "\n".join(f"{indent}{i}: {t}" for i, t in enumerate(self.times))
+        return f"""\
+{os.path.splitext(self.path)[1][1:].upper()} Database - {self.path}
+Mesh:
+{indent}Number of nodes: {self.nodes.shape[0]}
+{indent}Number of elements: {self.elements.shape[0]} ({typeSummary})
+Sets:
+{indent}Available node sets ({len(self.nodeSets)}):\n{join(self.nodeSets.keys())}
+{indent}Available element sets ({len(self.elementSets)}):\n{join(self.elementSets.keys())}
+Time steps ({self.times.size}):\n{timeSummary}
+Fields:
+{indent}Node fields ({self.nodeHeaders.size}):\n{join(self.nodeHeaders)}
+{indent}Centroid fields ({self.centroidHeaders.size}):\n{join(self.centroidHeaders)}"""
 
     def get(
         self,

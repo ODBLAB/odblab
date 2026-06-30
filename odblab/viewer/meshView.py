@@ -1,4 +1,5 @@
 import warnings
+import numpy as np
 from odblab.core import Database
 from odblab.viewer import RenderStyles, Renderable, Legend, getCellType
 from vtkmodules.vtkCommonCore import vtkPoints, vtkFloatArray, vtkIntArray
@@ -8,6 +9,7 @@ from vtkmodules.vtkFiltersCore import vtkExtractEdges, vtkThreshold
 from vtkmodules.vtkFiltersGeneral import vtkWarpVector
 from vtkmodules.vtkFiltersGeometry import vtkUnstructuredGridGeometryFilter
 from vtkmodules.vtkRenderingCore import vtkDataSetMapper, vtkActor
+from vtkmodules.util.numpy_support import vtk_to_numpy
 from itertools import combinations
 from numpy import ndarray as Array
 
@@ -26,10 +28,10 @@ class MeshView(Renderable):
         self._renderStyle: RenderStyles = RenderStyles.Filled
 
         # data set
-        self._visibilityMask: vtkIntArray = vtkIntArray()
-        self._visibilityMask.SetNumberOfValues(self._database.elements.shape[0])
-        self._visibilityMask.SetName("VisibilityMask")
-        self._visibilityMask.Fill(1)
+        self._cellVisibilityMask: vtkIntArray = vtkIntArray()
+        self._cellVisibilityMask.SetNumberOfValues(self._database.elements.shape[0])
+        self._cellVisibilityMask.SetName("CellVisibilityMask")
+        self._cellVisibilityMask.Fill(1)
         self._warpVectors: vtkFloatArray = vtkFloatArray()
         self._warpVectors.SetNumberOfComponents(3)
         self._warpVectors.SetNumberOfTuples(self._database.nodes.shape[0])
@@ -48,7 +50,7 @@ class MeshView(Renderable):
         self._grid.GetPointData().SetVectors(self._warpVectors)
         self._grid.GetPointData().SetScalars(self._pointScalars)
         self._grid.GetCellData().SetScalars(self._cellScalars)
-        self._grid.GetCellData().AddArray(self._visibilityMask)
+        self._grid.GetCellData().AddArray(self._cellVisibilityMask)
         self._grid.SetPoints(self._points)
         for type, connectivity in zip(self._database.types, self._database.elements):
             connectivity = connectivity.compressed()
@@ -64,7 +66,7 @@ class MeshView(Renderable):
         # visibility filter
         self._visibilityFilter: vtkThreshold = vtkThreshold()
         self._visibilityFilter.SetInputData(self._grid)
-        self._visibilityFilter.SetInputArrayToProcess("VisibilityMask", vtkUnstructuredGrid.FIELD_ASSOCIATION_CELLS)
+        self._visibilityFilter.SetInputArrayToProcess("CellVisibilityMask", vtkUnstructuredGrid.FIELD_ASSOCIATION_CELLS)
         self._visibilityFilter.SetThresholdFunction(vtkThreshold.THRESHOLD_UPPER)
         self._visibilityFilter.SetUpperThreshold(1)
 
@@ -155,8 +157,18 @@ class MeshView(Renderable):
     def applyCellVisibilityMask(self, mask: Array) -> None:
         """Applies the provided cell visibility boolean mask."""
         for i in range(self._database.elements.shape[0]):
-            self._visibilityMask.SetValue(i, mask[i])
-        self._visibilityMask.Modified()
+            self._cellVisibilityMask.SetValue(i, mask[i])
+        self._cellVisibilityMask.Modified()
+
+    def getCellVisibilityMask(self) -> Array:
+        """Returns a cell visibility mask array."""
+        return vtk_to_numpy(self._cellVisibilityMask).astype(np.bool, copy=True)
+
+    def getPointVisibilityMask(self) -> Array:
+        """Returns a point visibility mask array."""
+        mask: Array = np.zeros(shape=(self._database.nodes.shape[0],), dtype=np.bool)
+        mask[self._database.elements[self.getCellVisibilityMask(), :].compressed()] = 1
+        return mask
 
     def mirror(self, planeYZ: bool = False, planeXZ: bool = False, planeXY: bool = False) -> None:
         """Mirrors the displayed object."""
