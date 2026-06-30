@@ -189,3 +189,19 @@ class Database:
         object.__setattr__(self, headerAttribute, np.append(targetHeaders, [*data.keys()]))
         getattr(self, dataAttribute).setflags(write=False)
         getattr(self, headerAttribute).setflags(write=False)
+
+    def save(self) -> None:
+        """Save the database state to disk."""
+        with open(self.path, "wb") as file:
+            np.savez(file, allow_pickle=False, **{
+                "__nodes__": self.nodes,
+                "__types__": self.types,
+                "__elements__": np.ma.getdata(self.elements),
+                **{f"__node_set__.\"{name}\"": array for name, array in self.nodeSets.items()},
+                **{f"__element_set__.\"{name}\"": array for name, array in self.elementSets.items()},
+                "__times__": self.times,
+                "__node_data__": self.nodeData,
+                "__centroid_data__": self.centroidData,
+                "__node_headers__": self.nodeHeaders,
+                "__centroid_headers__": self.centroidHeaders,
+            })

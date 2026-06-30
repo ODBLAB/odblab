@@ -1,7 +1,6 @@
 import warnings
 from odblab.core import Database
-from odblab.viewer.util import getCellType
-from odblab.viewer import RenderStyles, Renderable, Legend
+from odblab.viewer import RenderStyles, Renderable, Legend, getCellType
 from vtkmodules.vtkCommonCore import vtkPoints, vtkFloatArray, vtkIntArray
 from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
 from vtkmodules.vtkCommonTransforms import vtkTransform

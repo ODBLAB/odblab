@@ -5,9 +5,9 @@ from pathlib import Path
 from numpy.ma import MaskedArray
 from numpy import ndarray as Array
 from importlib import resources
-from odblab.core import Database
+from odblab.core import Database, autoComputeMagnitude, autoComputeInvariants
 
-def _loadNpz(npzPath: str | Path) -> Database:
+def _loadNpz(npzPath: str | Path, autoComputeAllInvariants: bool = False) -> Database:
     """Loads the requested *.npz file."""
     if not isinstance(npzPath, Path): npzPath = Path(npzPath)
     npzPath = npzPath.resolve()
@@ -28,19 +28,28 @@ def _loadNpz(npzPath: str | Path) -> Database:
         centroidData: Array = data["__centroid_data__"]
         nodeHeaders: Array = data["__node_headers__"]
         centroidHeaders: Array = data["__centroid_headers__"]
-        return Database(
+        database: Database = Database(
             nodes, elements, types, nodeSets, elementSets,
             times, nodeHeaders, centroidHeaders, nodeData, centroidData,
             str(npzPath)
         )
+        if autoComputeAllInvariants:
+            print("Computing invariants...")
+            autoComputeMagnitude(database)
+            autoComputeInvariants(database)
+            database.save()
+            print("Database updated with invariants.")
+        return database
 
 def _loadOdb(odbPath: str | Path) -> Database:
     """Loads the requested *.odb file."""
     if not isinstance(odbPath, Path): odbPath = Path(odbPath)
     odbPath = odbPath.resolve()
     odbzPath: Path = odbPath.with_suffix(".odbz")
+    autoComputeAllInvariants: bool = True
     if odbPath.exists() and odbzPath.exists() and odbzPath.stat().st_mtime > odbPath.stat().st_mtime:
         print("Using cached ODBZ database.")
+        autoComputeAllInvariants = False
     else:
         print("ODBZ database not found or outdated. Converting ODB to ODBZ...")
         script: str = str(resources.files("odblab.scripts") / "odb2npz.py")
@@ -49,20 +58,22 @@ def _loadOdb(odbPath: str | Path) -> Database:
         with open("odb2npz.log", "r") as log:
             if log.readline().strip() != "EXIT_SUCCESS":
                 raise RuntimeError("error in 'odb2npz.py'\n  " + log.readline().strip())
-    return _loadNpz(odbzPath)
+    return _loadNpz(odbzPath, autoComputeAllInvariants)
 
 def _loadRst(rstPath: str | Path) -> Database:
     """Loads the requested *.rst file."""
     if not isinstance(rstPath, Path): rstPath = Path(rstPath)
     rstPath = rstPath.resolve()
     rstzPath: Path = rstPath.with_suffix(".rstz")
+    autoComputeAllInvariants: bool = True
     if rstPath.exists() and rstzPath.exists() and rstzPath.stat().st_mtime > rstPath.stat().st_mtime:
         print("Using cached RSTZ database.")
+        autoComputeAllInvariants = False
     else:
         print("RSTZ database not found or outdated. Converting RST to RSTZ...")
         script: str = str(resources.files("odblab.scripts") / "rst2npz.py")
         subprocess.run((sys.executable, script, "--rst", str(rstPath)), shell=True, check=True)
-    return _loadNpz(rstzPath)
+    return _loadNpz(rstzPath, autoComputeAllInvariants)
 
 def load(filePath: str | Path) -> Database:
     """Loads the requested finite element analysis database file."""

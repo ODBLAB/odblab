@@ -1,4 +1,5 @@
 import vtkmodules.vtkRenderingContextOpenGL2 # type: ignore
+from odblab.viewer.util import getCellType as getCellType
 from odblab.viewer.views import Views as Views
 from odblab.viewer.spectrums import Spectrums as Spectrums
 from odblab.viewer.renderStyles import RenderStyles as RenderStyles

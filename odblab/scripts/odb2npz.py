@@ -93,6 +93,7 @@ def extractMesh(odbPath, tempDir):
             ):
                 if entity == odb.rootAssembly:
                     for setName, entitySet in getattr(entity, setAttribute).items():
+                        if setName in (" ALL ELEMENTS", " ALL NODES"): continue
                         sets["%s.\"%s\"" % (suffix, setName)] = np.array(object=sorted(set(
                             indexMap[(instance.name, item.label)]
                             for instance, items in zip(entitySet.instances, getattr(entitySet, itemsAttribute))
@@ -100,6 +101,7 @@ def extractMesh(odbPath, tempDir):
                         )), dtype=np.int32)
                 else:
                     for setName, entitySet in getattr(entity, setAttribute).items():
+                        if setName in (" ALL ELEMENTS", " ALL NODES"): continue
                         sets["%s.\"%s.%s\"" % (suffix, entityName, setName)] = np.array(object=sorted(set(
                             indexMap[(entityName, item.label)]
                             for item in getattr(entitySet, itemsAttribute)
