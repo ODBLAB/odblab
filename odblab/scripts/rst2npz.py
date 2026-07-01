@@ -57,9 +57,11 @@ def main(rstPath):
         scoping = model.metadata.named_selection(name)
         match scoping.location:
             case dpf.locations.nodal:
-                sets[f"__node_set__.\"{name}\""] = np.unique(nodeMap[scoping.ids]).astype(np.int32, copy=False)
+                indices = nodeMap[scoping.ids[scoping.ids <= np.max(mesh.nodes.scoping.ids)]]
+                sets[f"__node_set__.\"{name}\""] = np.unique(indices[indices > -1]).astype(np.int32, copy=False)
             case dpf.locations.elemental:
-                sets[f"__element_set__.\"{name}\""] = np.unique(elementMap[scoping.ids]).astype(np.int32, copy=False)
+                indices = elementMap[scoping.ids[scoping.ids <= np.max(mesh.elements.scoping.ids)]]
+                sets[f"__element_set__.\"{name}\""] = np.unique(indices[indices > -1]).astype(np.int32, copy=False)
             case _:
                 raise NotImplementedError()
 

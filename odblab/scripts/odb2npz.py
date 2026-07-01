@@ -219,19 +219,23 @@ def extractResults(odbPath, tempDir, timeIndex, originalPosition, extrapolatedPo
         if odb is not None:
             odb.close()
 
-def main(odbPath, tempDir):
+def main(odbPath, tempDir, cpus):
     """The main block."""
     autoUpgradeOdb(odbPath)
     print("Extracting data from: " + odbPath)
 
     # mesh and field metadata extraction
-    print("Extracting finite element mesh and field output metadata using 2 CPU(s)...")
-    extractMeshProcess = Process(target=extractMesh, args=(odbPath, tempDir))
-    extractResultsMetadataProcess = Process(target=extractResultsMetadata, args=(odbPath, tempDir))
-    extractMeshProcess.start()
-    extractResultsMetadataProcess.start()
-    extractMeshProcess.join()
-    extractResultsMetadataProcess.join()
+    print("Extracting finite element mesh and field output metadata using %d CPU(s)..." % min(2, cpus))
+    if cpus == 1:
+        extractMesh(odbPath, tempDir)
+        extractResultsMetadata(odbPath, tempDir)
+    else:
+        extractMeshProcess = Process(target=extractMesh, args=(odbPath, tempDir))
+        extractResultsMetadataProcess = Process(target=extractResultsMetadata, args=(odbPath, tempDir))
+        extractMeshProcess.start()
+        extractResultsMetadataProcess.start()
+        extractMeshProcess.join()
+        extractResultsMetadataProcess.join()
 
     # initialize disk storage for result extraction
     print("Initializing field output storage...")
@@ -254,7 +258,7 @@ def main(odbPath, tempDir):
         diskArray.flush()
 
     # extract field outputs in parallel
-    cpuCount = cpu_count()
+    cpuCount = min(cpu_count(), cpus)
     print("Extracting field outputs using %d CPU(s)..." % cpuCount)
     tasks = list()
     for timeIndex in range(frameCount):
@@ -293,8 +297,9 @@ if __name__ == "__main__":
         try:
             argParser = ArgumentParser()
             argParser.add_argument("--odb", dest="odb", type=os.path.abspath, required=True, help="The ODB file path.")
+            argParser.add_argument("--cpus", dest="cpus", type=int, default=32, help="Upper process count limit.")
             args = argParser.parse_args()
-            main(args.odb, tempDir)
+            main(args.odb, tempDir, max(1, args.cpus))
             log.write("EXIT_SUCCESS\n")
         except Exception as e:
             log.write("EXIT_FAILURE\n")

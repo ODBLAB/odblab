@@ -41,7 +41,7 @@ def _loadNpz(npzPath: str | Path, autoComputeAllInvariants: bool = False) -> Dat
             print("Database updated with invariants.")
         return database
 
-def _loadOdb(odbPath: str | Path) -> Database:
+def _loadOdb(odbPath: str | Path, cpus: int | None = None) -> Database:
     """Loads the requested *.odb file."""
     if not isinstance(odbPath, Path): odbPath = Path(odbPath)
     odbPath = odbPath.resolve()
@@ -53,7 +53,9 @@ def _loadOdb(odbPath: str | Path) -> Database:
     else:
         print("ODBZ database not found or outdated. Converting ODB to ODBZ...")
         script: str = str(resources.files("odblab.scripts") / "odb2npz.py")
-        if subprocess.run(("abaqus", "python", script, "--odb", str(odbPath)), shell=True, check=True).returncode:
+        args: list[str] = ["abaqus", "python", script, "--odb", str(odbPath)]
+        if cpus is not None: args += ["--cpus", str(cpus)]
+        if subprocess.run(args, shell=True, check=True).returncode:
             raise RuntimeError("abaqus command not found; abaqus must be installed on the system")
         with open("odb2npz.log", "r") as log:
             if log.readline().strip() != "EXIT_SUCCESS":
@@ -75,13 +77,13 @@ def _loadRst(rstPath: str | Path) -> Database:
         subprocess.run((sys.executable, script, "--rst", str(rstPath)), shell=True, check=True)
     return _loadNpz(rstzPath, autoComputeAllInvariants)
 
-def load(filePath: str | Path) -> Database:
+def load(filePath: str | Path, cpus: int | None = None) -> Database:
     """Loads the requested finite element analysis database file."""
     if not isinstance(filePath, Path): filePath = Path(filePath)
     filePath = filePath.resolve()
     if not filePath.exists(): raise FileNotFoundError(filePath)
     match filePath.suffix.lower():
         case ".odbz" | ".rstz": return _loadNpz(filePath)
-        case ".odb": return _loadOdb(filePath)
+        case ".odb": return _loadOdb(filePath, cpus)
         case ".rst": return _loadRst(filePath)
         case _: raise ValueError(f"unexpected file extension '{filePath.suffix}': {filePath}")
