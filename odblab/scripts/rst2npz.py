@@ -76,7 +76,7 @@ def main(rstPath):
     nodeFieldOffsets, centroidFieldOffsets = [0], [0]
     for metadata in model.metadata.result_info.available_results:
         name = metadata.operator_name
-        match metadata.dimensionality:
+        match dpf.natures[metadata.dimensionality]:
             case dpf.natures.scalar: headers = [name]
             case dpf.natures.vector: headers = [f"{name}.{name}{x}" for x in ("1", "2", "3")]
             case dpf.natures.symmatrix: headers = [f"{name}.{name}{xy}" for xy in ("11", "22", "33", "12", "23", "13")]
