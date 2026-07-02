@@ -1,11 +1,27 @@
+import os
 import sys
-import subprocess
 import numpy as np
+from typing import Any
 from pathlib import Path
 from numpy.ma import MaskedArray
 from numpy import ndarray as Array
-from importlib import resources
+from collections.abc import Sequence
+from subprocess import Popen, PIPE
+from importlib.resources import files, as_file
 from odblab.core import Database, autoComputeMagnitude, autoComputeInvariants
+
+def _runScript(args: Sequence[Any]) -> None:
+    """Runs the extraction script as a subprocess (MATLAB-friendly approach)."""
+    cmd: str = " ".join(f"\"{arg.resolve()}\"" if isinstance(arg, Path) else str(arg) for arg in args)
+    env: dict[str, str] = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    process: Popen[str] = Popen(cmd, env=env, shell=True, stdout=PIPE, stderr=PIPE, text=True, bufsize=1)
+    if process.stdout is not None:
+        for line in process.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush() 
+    stderr: str = process.communicate()[1]
+    if process.returncode != 0: raise RuntimeError(f"extraction script failed\n{stderr}")
 
 def _loadNpz(npzPath: str | Path, autoComputeAllInvariants: bool = False) -> Database:
     """Loads the requested *.npz file."""
@@ -52,11 +68,10 @@ def _loadOdb(odbPath: str | Path, cpus: int | None = None) -> Database:
         autoComputeAllInvariants = False
     else:
         print("ODBZ database not found or outdated. Converting ODB to ODBZ...")
-        script: str = str(resources.files("odblab.scripts") / "odb2npz.py")
-        args: list[str] = ["abaqus", "python", script, "--odb", str(odbPath)]
-        if cpus is not None: args += ["--cpus", str(cpus)]
-        if subprocess.run(args, shell=True, check=True).returncode:
-            raise RuntimeError("abaqus command not found; abaqus must be installed on the system")
+        with as_file(files("odblab.scripts") / "odb2npz.py") as scriptPath:
+            args: list[Any] = ["abaqus", "python", scriptPath, "--odb", odbPath]
+            if cpus is not None: args += ["--cpus", cpus]
+            _runScript(args)
         with open("odb2npz.log", "r") as log:
             if log.readline().strip() != "EXIT_SUCCESS":
                 raise RuntimeError("error in 'odb2npz.py'\n  " + log.readline().strip())
@@ -73,8 +88,8 @@ def _loadRst(rstPath: str | Path) -> Database:
         autoComputeAllInvariants = False
     else:
         print("RSTZ database not found or outdated. Converting RST to RSTZ...")
-        script: str = str(resources.files("odblab.scripts") / "rst2npz.py")
-        subprocess.run((sys.executable, script, "--rst", str(rstPath)), shell=True, check=True)
+        with as_file(files("odblab.scripts") / "rst2npz.py") as scriptPath:
+            _runScript((Path(sys.executable), scriptPath, "--rst", rstPath))
     return _loadNpz(rstzPath, autoComputeAllInvariants)
 
 def load(filePath: str | Path, cpus: int | None = None) -> Database:
