@@ -141,7 +141,7 @@ def main(rstPath):
     print("Saving data to disk...")
     rstzPath = os.path.splitext(rstPath)[0] + ".rstz"
     with open(rstzPath, "wb") as rstz:
-        np.savez(rstzPath, **sets, **{
+        np.savez(rstz, **sets, **{
             "__nodes__": nodes,
             "__types__": types,
             "__elements__": elements,
