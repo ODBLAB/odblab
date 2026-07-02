@@ -57,10 +57,10 @@ def main(rstPath):
         scoping = model.metadata.named_selection(name)
         match scoping.location:
             case dpf.locations.nodal:
-                indices = nodeMap[scoping.ids[scoping.ids <= np.max(mesh.nodes.scoping.ids)]]
+                indices = nodeMap[scoping.ids[scoping.ids < nodeMap.size]]
                 sets[f"__node_set__.\"{name}\""] = np.unique(indices[indices > -1]).astype(np.int32, copy=False)
             case dpf.locations.elemental:
-                indices = elementMap[scoping.ids[scoping.ids <= np.max(mesh.elements.scoping.ids)]]
+                indices = elementMap[scoping.ids[scoping.ids < elementMap.size]]
                 sets[f"__element_set__.\"{name}\""] = np.unique(indices[indices > -1]).astype(np.int32, copy=False)
             case _:
                 raise NotImplementedError()
@@ -77,9 +77,9 @@ def main(rstPath):
     for metadata in model.metadata.result_info.available_results:
         name = metadata.operator_name
         match metadata.dimensionality:
-            case "scalar": headers = [name]
-            case "vector": headers = [f"{name}.{name}{x}" for x in ("1", "2", "3")]
-            case "symmatrix": headers = [f"{name}.{name}{xy}" for xy in ("11", "22", "33", "12", "23", "13")]
+            case dpf.natures.scalar: headers = [name]
+            case dpf.natures.vector: headers = [f"{name}.{name}{x}" for x in ("1", "2", "3")]
+            case dpf.natures.symmatrix: headers = [f"{name}.{name}{xy}" for xy in ("11", "22", "33", "12", "23", "13")]
             case _: headers = [f"{name}.{name}{i + 1}" for i in range(metadata.n_components)]
         match metadata.native_location:
             case dpf.locations.nodal:
@@ -108,18 +108,30 @@ def main(rstPath):
             case dpf.locations.nodal:
                 slice0 = slice(nodeFieldOffsets[i], nodeFieldOffsets[i] + metadata.n_components)
                 for timeIndex, field in enumerate(fields):
-                    nodeData[slice0, nodeMap[field.scoping.ids], timeIndex] = field.data.T
+                    boundsMask = field.scoping.ids < nodeMap.size
+                    indices = nodeMap[field.scoping.ids[boundsMask]]
+                    validMask = indices > -1
+                    nodeData[slice0, indices[validMask], timeIndex] = field.data[boundsMask][validMask].T
             case dpf.locations.elemental:
                 slice0 = slice(centroidFieldOffsets[i], centroidFieldOffsets[i] + metadata.n_components)
                 for timeIndex, field in enumerate(fields):
-                    centroidData[slice0, elementMap[field.scoping.ids], timeIndex] = field.data.T
+                    boundsMask = field.scoping.ids < elementMap.size
+                    indices = elementMap[field.scoping.ids[boundsMask]]
+                    validMask = indices > -1
+                    centroidData[slice0, indices[validMask], timeIndex] = field.data[boundsMask][validMask].T
             case dpf.locations.elemental_nodal:
                 nodeSlice0 = slice(nodeFieldOffsets[i], nodeFieldOffsets[i] + metadata.n_components)
                 centroidSlice0 = slice(centroidFieldOffsets[i], centroidFieldOffsets[i] + metadata.n_components)
                 for timeIndex, field in enumerate(dpf.operators.averaging.to_nodal_fc(fields).eval()):
-                    nodeData[nodeSlice0, nodeMap[field.scoping.ids], timeIndex] = field.data.T
+                    boundsMask = field.scoping.ids < nodeMap.size
+                    indices = nodeMap[field.scoping.ids[boundsMask]]
+                    validMask = indices > -1
+                    nodeData[nodeSlice0, indices[validMask], timeIndex] = field.data[boundsMask][validMask].T
                 for timeIndex, field in enumerate(dpf.operators.averaging.to_elemental_fc(fields).eval()):
-                    centroidData[centroidSlice0, elementMap[field.scoping.ids], timeIndex] = field.data.T
+                    boundsMask = field.scoping.ids < elementMap.size
+                    indices = elementMap[field.scoping.ids[boundsMask]]
+                    validMask = indices > -1
+                    centroidData[centroidSlice0, indices[validMask], timeIndex] = field.data[boundsMask][validMask].T
             case _:
                 raise NotImplementedError()
 
@@ -129,18 +141,16 @@ def main(rstPath):
     print("Saving data to disk...")
     rstzPath = os.path.splitext(rstPath)[0] + ".rstz"
     with open(rstzPath, "wb") as rstz:
-        np.savez(
-            file=rstz,
-            __nodes__=np.asarray(nodes, dtype=np.float32),
-            __types__=np.asarray(types, dtype="U"),
-            __elements__=np.asarray(elements, dtype=np.int32),
-            __times__=np.asarray(times, dtype=np.float32),
-            __node_headers__=np.asarray(nodeHeaders, dtype="U"),
-            __centroid_headers__=np.asarray(centroidHeaders, dtype="U"),
-            __node_data__=np.asarray(nodeData, dtype=np.float32),
-            __centroid_data__=np.asarray(centroidData, dtype=np.float32),
-            **sets
-        )
+        np.savez(rstzPath, **sets, **{
+            "__nodes__": nodes,
+            "__types__": types,
+            "__elements__": elements,
+            "__times__": times,
+            "__node_data__": nodeData,
+            "__centroid_data__": centroidData,
+            "__node_headers__": nodeHeaders,
+            "__centroid_headers__": centroidHeaders,
+        })
     print("Done extracting. Data stored in: " + rstzPath)
 
 if __name__ == "__main__":

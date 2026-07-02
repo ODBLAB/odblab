@@ -137,8 +137,8 @@ class Viewport(QWidget):
         regionMask: Array = self._meshView.getPointVisibilityMask()
         if self._useGlobalRange: subset = self._meshView.database.nodeData[headerIndex, regionMask, :]
         else: subset = self._meshView.database.nodeData[headerIndex, regionMask, timeIndex]
-        minValue: float = float(np.nanmin(subset))
-        maxValue: float = float(np.nanmax(subset))
+        minValue: float = float(np.nanmin(subset)) if subset.size else 0.0
+        maxValue: float = float(np.nanmax(subset)) if subset.size else 1.0
 
         # plot
         self.clearContourPlot(draw=False); self._currentNodeHeader = header
@@ -166,8 +166,8 @@ class Viewport(QWidget):
         regionMask: Array = self._meshView.getCellVisibilityMask()
         if self._useGlobalRange: subset = self._meshView.database.centroidData[headerIndex, regionMask, :]
         else: subset = self._meshView.database.centroidData[headerIndex, regionMask, timeIndex]
-        minValue: float = float(np.nanmin(subset))
-        maxValue: float = float(np.nanmax(subset))
+        minValue: float = float(np.nanmin(subset)) if subset.size else 0.0
+        maxValue: float = float(np.nanmax(subset)) if subset.size else 1.0
 
         # plot
         self.clearContourPlot(draw=False); self._currentCentroidHeader = header
