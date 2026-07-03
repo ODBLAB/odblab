@@ -9,7 +9,7 @@ def view(database: Database, theme: Literal["light", "dark"] | None = None) -> i
     """Launches the viewer application."""
 
     # create application object
-    app: QApplication = QApplication(sys.argv)
+    app: QApplication = obj if isinstance(obj := QApplication.instance(), QApplication) else QApplication(sys.argv)
     app.setStyle("Fusion")
     if theme is not None:
         match theme:
