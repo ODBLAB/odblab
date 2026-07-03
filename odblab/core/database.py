@@ -3,8 +3,8 @@ import numpy as np
 from numpy import ndarray as Array
 from numpy.ma import MaskedArray
 from dataclasses import dataclass
-from collections.abc import Sequence, Mapping, Collection, Callable
-from typing import Literal
+from collections.abc import Mapping, Collection, Callable
+from typing import Literal, overload
 
 @dataclass(frozen=True)
 class Database:
@@ -56,13 +56,33 @@ Fields:
 {indent}Node fields ({self.nodeHeaders.size}):\n{join(self.nodeHeaders)}
 {indent}Centroid fields ({self.centroidHeaders.size}):\n{join(self.centroidHeaders)}"""
 
+    @overload
     def get(
         self,
         position: Literal["nodes", "centroids"],
-        fields: Sequence[str],
+        fields: str,
+        subset: str | None = None,
+        frame: int | None = None
+    ) -> Array:
+        ...
+
+    @overload
+    def get(
+        self,
+        position: Literal["nodes", "centroids"],
+        fields: list[str] | tuple[str, ...],
         subset: str | None = None,
         frame: int | None = None
     ) -> tuple[Array, ...]:
+        ...
+
+    def get(
+        self,
+        position: Literal["nodes", "centroids"],
+        fields: str | list[str] | tuple[str, ...],
+        subset: str | None = None,
+        frame: int | None = None
+    ) -> Array | tuple[Array, ...]:
         """
         Retrieve field output data for the specified position, region, and time.
 
@@ -70,7 +90,7 @@ Fields:
         ----------
         position : {'nodes', 'centroids'}
             The spatial location of the requested data.
-        fields : sequence of strings
+        fields : string or sequence of strings
             The names/headers of the requested fields, e.g., `['U.U1', 'U.U2', 'U.U3']`, `['S.MISES', 'S.TRESCA']`.
         subset : string, optional
             Optional node (if `position='nodes'`) or element (if `position='centroids'`) set name defining the region
@@ -80,11 +100,12 @@ Fields:
 
         Returns
         -------
-        out : tuple of arrays
+        out : array or tuple of arrays
             Arrays containing the requested field output data. If the data is requested at a specific frame, the
             returned arrays are vectors of size `m`; otherwise, they are matrices of size `m`-by-`n`, where `m` is the
             number of nodes (if `position='nodes'`) or elements (if `position='centroids'`) and `n` is the number of
-            available frames.
+            available frames. If `fields` is specified as a single string, return a single array instead of a tuple of
+            arrays.
         """
 
         # get requested position
@@ -125,7 +146,7 @@ Fields:
                 )
             i: int = int(found[0])
             out.append(targetData[i, j, k])
-        return tuple(out)
+        return out[0] if isinstance(fields, str) else tuple(out)
 
     def add(
         self,
