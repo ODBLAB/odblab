@@ -71,8 +71,8 @@ def autoComputeMagnitude(database: Database) -> None:
         for label, components in vectors.items():
             if f"{label}.MAGNITUDE" in currentHeaders: continue
             if "1" not in components or "2" not in components: continue
-            u1, u2 = database.get(position, (components["1"], components["2"]))
-            u3, = database.get(position, (components["3"],)) if "3" in components else (None,)
+            u1, u2 = database.get((components["1"], components["2"]), position)
+            u3, = database.get((components["3"],), position) if "3" in components else (None,)
             magnitudes[f"{label}.MAGNITUDE"] = computeMagnitude(u1, u2, u3)
         database.add(magnitudes, position)
 
@@ -93,10 +93,10 @@ def autoComputeInvariants(database: Database) -> None:
                 "MISES", "TRESCA", "PRESSURE"
             )): continue
             if any(ij not in components for ij in ("11", "22", "12")): continue
-            s11, s22, s12 = database.get(position, (components["11"], components["22"], components["12"]))
-            s33, = database.get(position, (components["33"],)) if "33" in components else (None,)
-            s13, = database.get(position, (components["13"],)) if "13" in components else (None,)
-            s23, = database.get(position, (components["23"],)) if "23" in components else (None,)
+            s11, s22, s12 = database.get((components["11"], components["22"], components["12"]), position)
+            s33, = database.get((components["33"],), position) if "33" in components else (None,)
+            s13, = database.get((components["13"],), position) if "13" in components else (None,)
+            s23, = database.get((components["23"],), position) if "23" in components else (None,)
             if label != "S":
                 s12 = s12/2
                 if s13 is not None: s13 = s13/2
