@@ -36,13 +36,13 @@ class Database:
         ):
             array.setflags(write=False)
 
-    def __repr__(self) -> str:
+    def __repr__(self, indexBase: int = 0) -> str:
         """Readable database summary."""
         indent: str = " "*2
         join: Callable[[Collection[str]], str] = lambda items: \
             "\n".join(f"{indent*2}\"{item}\"" for item in items) if len(items) else f"{indent*2}None"
         typeSummary: str = "; ".join(f"{t}: {c}" for t, c in zip(*np.unique(self.types, return_counts=True)))
-        timeSummary: str = "\n".join(f"{indent}{i}: {t}" for i, t in enumerate(self.times))
+        timeSummary: str = "\n".join(f"{indent}{i}: {t}" for i, t in enumerate(self.times, start=indexBase))
         return f"""\
 {os.path.splitext(self.path)[1][1:].upper()} Database - {self.path}
 Mesh:
@@ -51,7 +51,7 @@ Mesh:
 Sets:
 {indent}Available node sets ({len(self.nodeSets)}):\n{join(self.nodeSets.keys())}
 {indent}Available element sets ({len(self.elementSets)}):\n{join(self.elementSets.keys())}
-Time steps ({self.times.size}):\n{timeSummary}
+Time steps ({self.times.size}) [{indexBase}-based indexing]:\n{timeSummary}
 Fields:
 {indent}Node fields ({self.nodeHeaders.size}):\n{join(self.nodeHeaders)}
 {indent}Centroid fields ({self.centroidHeaders.size}):\n{join(self.centroidHeaders)}"""
@@ -59,8 +59,8 @@ Fields:
     @overload
     def get(
         self,
-        position: Literal["nodes", "centroids"],
         fields: str,
+        position: Literal["nodes", "centroids"],
         subset: str | None = None,
         frame: int | None = None
     ) -> Array:
@@ -69,8 +69,8 @@ Fields:
     @overload
     def get(
         self,
-        position: Literal["nodes", "centroids"],
         fields: list[str] | tuple[str, ...],
+        position: Literal["nodes", "centroids"],
         subset: str | None = None,
         frame: int | None = None
     ) -> tuple[Array, ...]:
@@ -78,8 +78,8 @@ Fields:
 
     def get(
         self,
-        position: Literal["nodes", "centroids"],
         fields: str | list[str] | tuple[str, ...],
+        position: Literal["nodes", "centroids"],
         subset: str | None = None,
         frame: int | None = None
     ) -> Array | tuple[Array, ...]:
@@ -88,10 +88,10 @@ Fields:
 
         Parameters
         ----------
-        position : {'nodes', 'centroids'}
-            The spatial location of the requested data.
         fields : string or sequence of strings
             The names/headers of the requested fields, e.g., `['U.U1', 'U.U2', 'U.U3']`, `['S.MISES', 'S.TRESCA']`.
+        position : {'nodes', 'centroids'}
+            The spatial location of the requested data.
         subset : string, optional
             Optional node (if `position='nodes'`) or element (if `position='centroids'`) set name defining the region
             for which the data is to be extracted. If not specified, extracts data for all nodes or centroids.
