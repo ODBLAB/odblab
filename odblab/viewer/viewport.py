@@ -133,12 +133,12 @@ class Viewport(QWidget):
         headerIndex: int = int(np.where(self._meshView.database.nodeHeaders == self._currentNodeHeader)[0][0])
 
         # get scalar range
-        subset: Array
+        region: Array
         regionMask: Array = self._meshView.getPointVisibilityMask()
-        if self._useGlobalRange: subset = self._meshView.database.nodeData[headerIndex, regionMask, :]
-        else: subset = self._meshView.database.nodeData[headerIndex, regionMask, timeIndex]
-        minValue: float = float(np.nanmin(subset)) if subset.size else 0.0
-        maxValue: float = float(np.nanmax(subset)) if subset.size else 1.0
+        if self._useGlobalRange: region = self._meshView.database.nodeData[headerIndex, regionMask, :]
+        else: region = self._meshView.database.nodeData[headerIndex, regionMask, timeIndex]
+        minValue: float = float(np.nanmin(region)) if region.size else 0.0
+        maxValue: float = float(np.nanmax(region)) if region.size else 1.0
 
         # plot
         self.clearContourPlot(draw=False); self._currentNodeHeader = header
@@ -162,12 +162,12 @@ class Viewport(QWidget):
         headerIndex: int = int(np.where(self._meshView.database.centroidHeaders == self._currentCentroidHeader)[0][0])
 
         # get scalar range
-        subset: Array
+        region: Array
         regionMask: Array = self._meshView.getCellVisibilityMask()
-        if self._useGlobalRange: subset = self._meshView.database.centroidData[headerIndex, regionMask, :]
-        else: subset = self._meshView.database.centroidData[headerIndex, regionMask, timeIndex]
-        minValue: float = float(np.nanmin(subset)) if subset.size else 0.0
-        maxValue: float = float(np.nanmax(subset)) if subset.size else 1.0
+        if self._useGlobalRange: region = self._meshView.database.centroidData[headerIndex, regionMask, :]
+        else: region = self._meshView.database.centroidData[headerIndex, regionMask, timeIndex]
+        minValue: float = float(np.nanmin(region)) if region.size else 0.0
+        maxValue: float = float(np.nanmax(region)) if region.size else 1.0
 
         # plot
         self.clearContourPlot(draw=False); self._currentCentroidHeader = header

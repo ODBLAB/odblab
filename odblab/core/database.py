@@ -51,7 +51,7 @@ Mesh:
 Sets:
 {indent}Available node sets ({len(self.nodeSets)}):\n{join(self.nodeSets.keys())}
 {indent}Available element sets ({len(self.elementSets)}):\n{join(self.elementSets.keys())}
-Time steps ({self.times.size}) [{indexBase}-based indexing]:\n{timeSummary}
+Time frames ({self.times.size}) [{indexBase}-based indexing]:\n{timeSummary}
 Fields:
 {indent}Node fields ({self.nodeHeaders.size}):\n{join(self.nodeHeaders)}
 {indent}Centroid fields ({self.centroidHeaders.size}):\n{join(self.centroidHeaders)}"""
@@ -61,8 +61,8 @@ Fields:
         self,
         fields: str,
         position: Literal["nodes", "centroids"],
-        subset: str | None = None,
-        timeMask: Array | None = None
+        region: str | None = None,
+        frames: Array | None = None
     ) -> Array:
         ...
 
@@ -71,8 +71,8 @@ Fields:
         self,
         fields: list[str] | tuple[str, ...],
         position: Literal["nodes", "centroids"],
-        subset: str | None = None,
-        timeMask: Array | None = None
+        region: str | None = None,
+        frames: Array | None = None
     ) -> tuple[Array, ...]:
         ...
 
@@ -80,8 +80,8 @@ Fields:
         self,
         fields: str | list[str] | tuple[str, ...],
         position: Literal["nodes", "centroids"],
-        subset: str | None = None,
-        timeMask: Array | None = None
+        region: str | None = None,
+        frames: Array | None = None
     ) -> Array | tuple[Array, ...]:
         """
         Retrieve field output data for the specified position, region, and time.
@@ -92,21 +92,20 @@ Fields:
             The names/headers of the requested fields, e.g., `['U.U1', 'U.U2', 'U.U3']`, `['S.MISES', 'S.TRESCA']`.
         position : {'nodes', 'centroids'}
             The spatial location of the requested data.
-        subset : string, optional
+        region : string, optional
             Optional node (if `position='nodes'`) or element (if `position='centroids'`) set name defining the region
             for which the data is to be extracted. If not specified, extracts data for all nodes or centroids.
-        timeMask : array, optional
-            Optional boolean mask used to filter the requested time steps (e.g., `timeMask=database.times >= 3.14`). If
-            not specified, extracts data for all frames.
+        frames : array, optional
+            Optional boolean mask used to filter the requested time frames (e.g., `frames=database.times >= 3.14`). If
+            not specified, extracts data for all time frames.
 
         Returns
         -------
         out : array or tuple of arrays
             Arrays containing the requested field output data. The returned arrays are matrices of size `m`-by-`n`,
             where `m` is the number of nodes (if `position='nodes'`) or elements (if `position='centroids'`) and `n` is
-            the number of requested time frames if `timeMask` is specified; otherwise, it is the number of available
-            time frames. If `fields` is specified as a single string, return a single array instead of a tuple of
-            arrays.
+            the number of requested time frames if `frames` is specified; otherwise, it is the number of available time
+            frames. If `fields` is specified as a single string, return a single array instead of a tuple of arrays.
         """
 
         # get requested position
@@ -125,18 +124,18 @@ Fields:
 
         # get j-indexing
         j: slice | Array = slice(None)
-        if subset is not None:
-            if subset not in targetSets.keys():
+        if region is not None:
+            if region not in targetSets.keys():
                 raise ValueError(
-                    f"set '{subset}' not available for position '{position}'; available sets: " +
+                    f"set '{region}' not available for position '{position}'; available sets: " +
                     ", ".join(f"'{key}'" for key in targetSets.keys())
                 )
-            j = targetSets[subset]
+            j = targetSets[region]
 
         # get k-indexing
-        if isinstance(timeMask, Array) and not np.isdtype(timeMask.dtype, "bool"):
-            raise ValueError(f"time mask array must have a boolean data type, not '{timeMask.dtype}'")
-        k: slice | Array = slice(None) if timeMask is None else timeMask
+        if isinstance(frames, Array) and not np.isdtype(frames.dtype, "bool"):
+            raise ValueError(f"time mask array must have a boolean data type, not '{frames.dtype}'")
+        k: slice | Array = slice(None) if frames is None else frames
 
         # get fields
         out: list[Array] = []
@@ -155,8 +154,8 @@ Fields:
         self,
         data: Mapping[str, Array],
         position: Literal["nodes", "centroids"],
-        subset: str | None = None,
-        timeMask: Array | None = None
+        region: str | None = None,
+        frames: Array | None = None
     ) -> None:
         """
         Add field output arrays to the database.
@@ -169,12 +168,12 @@ Fields:
             time frame(s).
         position : {'nodes', 'centroids'}
             The spatial location where the new data should be added.
-        subset : string, optional
+        region : string, optional
             Optional node (if `position='nodes'`) or element (if `position='centroids'`) set name defining the region
             for which the data is to be added. If not specified, adds data for all nodes or centroids. If specified, 
-            nodes/centroids outside this subset will be padded with NaN.
-        timeMask : array, optional
-            Optional boolean mask used to filter the time steps for which the data is to be added. If not specified,
+            nodes/centroids outside this region will be padded with NaN.
+        frames : array, optional
+            Optional boolean mask used to filter the time frames for which the data is to be added. If not specified,
             adds data for all time frames. If specified, time frames outside this mask will be padded with NaN.
         """
 
@@ -197,18 +196,18 @@ Fields:
 
         # get j-indexing
         j: slice | Array = slice(None)
-        if subset is not None:
-            if subset not in targetSets.keys():
+        if region is not None:
+            if region not in targetSets.keys():
                 raise ValueError(
-                    f"set '{subset}' not available for position '{position}'; available sets: " +
+                    f"set '{region}' not available for position '{position}'; available sets: " +
                     ", ".join(f"'{key}'" for key in targetSets.keys())
                 )
-            j = targetSets[subset]
+            j = targetSets[region]
 
         # get k-indexing
-        if isinstance(timeMask, Array) and not np.isdtype(timeMask.dtype, "bool"):
-            raise ValueError(f"time mask array must have a boolean data type, not '{timeMask.dtype}'")
-        k: slice | Array = slice(None) if timeMask is None else timeMask
+        if isinstance(frames, Array) and not np.isdtype(frames.dtype, "bool"):
+            raise ValueError(f"time mask array must have a boolean data type, not '{frames.dtype}'")
+        k: slice | Array = slice(None) if frames is None else frames
 
         # get expected array shape
         expectedEntityCount: int = int(targetData.shape[1]) if isinstance(j, slice) else j.size
