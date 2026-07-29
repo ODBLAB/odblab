@@ -96,8 +96,8 @@ Fields:
             Optional node (if `position='nodes'`) or element (if `position='centroids'`) set name defining the region
             for which the data is to be extracted. If not specified, extracts data for all nodes or centroids.
         timeMask : array, optional
-            Optional mask used to filter the requested time steps (e.g., `timeMask=database.times >= 3.14`). If not
-            specified, extracts data for all frames.
+            Optional boolean mask used to filter the requested time steps (e.g., `timeMask=database.times >= 3.14`). If
+            not specified, extracts data for all frames.
 
         Returns
         -------
@@ -174,8 +174,8 @@ Fields:
             for which the data is to be added. If not specified, adds data for all nodes or centroids. If specified, 
             nodes/centroids outside this subset will be padded with NaN.
         timeMask : array, optional
-            Optional mask used to filter the time steps for which the data is to be added. If not specified, adds data
-            for all time frames. If specified, time frames outside this mask will be padded with NaN.
+            Optional boolean mask used to filter the time steps for which the data is to be added. If not specified,
+            adds data for all time frames. If specified, time frames outside this mask will be padded with NaN.
         """
 
         # get requested position
