@@ -62,7 +62,7 @@ Fields:
         fields: str,
         position: Literal["nodes", "centroids"],
         subset: str | None = None,
-        frame: int | None = None
+        timeMask: Array | None = None
     ) -> Array:
         ...
 
@@ -72,7 +72,7 @@ Fields:
         fields: list[str] | tuple[str, ...],
         position: Literal["nodes", "centroids"],
         subset: str | None = None,
-        frame: int | None = None
+        timeMask: Array | None = None
     ) -> tuple[Array, ...]:
         ...
 
@@ -81,7 +81,7 @@ Fields:
         fields: str | list[str] | tuple[str, ...],
         position: Literal["nodes", "centroids"],
         subset: str | None = None,
-        frame: int | None = None
+        timeMask: Array | None = None
     ) -> Array | tuple[Array, ...]:
         """
         Retrieve field output data for the specified position, region, and time.
@@ -95,16 +95,17 @@ Fields:
         subset : string, optional
             Optional node (if `position='nodes'`) or element (if `position='centroids'`) set name defining the region
             for which the data is to be extracted. If not specified, extracts data for all nodes or centroids.
-        frame : integer, optional
-            The time frame index for which the data is to be extracted. If not specified, extracts data for all frames.
+        timeMask : array, optional
+            Optional mask used to filter the requested time steps (e.g., `timeMask=database.times >= 3.14`). If not
+            specified, extracts data for all frames.
 
         Returns
         -------
         out : array or tuple of arrays
-            Arrays containing the requested field output data. If the data is requested at a specific frame, the
-            returned arrays are vectors of size `m`; otherwise, they are matrices of size `m`-by-`n`, where `m` is the
-            number of nodes (if `position='nodes'`) or elements (if `position='centroids'`) and `n` is the number of
-            available frames. If `fields` is specified as a single string, return a single array instead of a tuple of
+            Arrays containing the requested field output data. The returned arrays are matrices of size `m`-by-`n`,
+            where `m` is the number of nodes (if `position='nodes'`) or elements (if `position='centroids'`) and `n` is
+            the number of requested time frames if `timeMask` is specified; otherwise, it is the number of available
+            time frames. If `fields` is specified as a single string, return a single array instead of a tuple of
             arrays.
         """
 
@@ -133,7 +134,9 @@ Fields:
             j = targetSets[subset]
 
         # get k-indexing
-        k: slice | int = slice(None) if frame is None else frame
+        if isinstance(timeMask, Array) and not np.isdtype(timeMask.dtype, "bool"):
+            raise ValueError(f"time mask array must have a boolean data type, not '{timeMask.dtype}'")
+        k: slice | Array = slice(None) if timeMask is None else timeMask
 
         # get fields
         out: list[Array] = []
@@ -145,7 +148,7 @@ Fields:
                     ", ".join(f"'{h}'" for h in targetHeaders)
                 )
             i: int = int(found[0])
-            out.append(targetData[i, j, k])
+            out.append(targetData[i][j, :][:, k])
         return out[0] if isinstance(fields, str) else tuple(out)
 
     def add(
@@ -153,7 +156,7 @@ Fields:
         data: Mapping[str, Array],
         position: Literal["nodes", "centroids"],
         subset: str | None = None,
-        frame: int | None = None
+        timeMask: Array | None = None
     ) -> None:
         """
         Add field output arrays to the database.
@@ -170,9 +173,9 @@ Fields:
             Optional node (if `position='nodes'`) or element (if `position='centroids'`) set name defining the region
             for which the data is to be added. If not specified, adds data for all nodes or centroids. If specified, 
             nodes/centroids outside this subset will be padded with NaN.
-        frame : integer, optional
-            The time frame index for which the data is to be added. If not specified, adds data for all frames. If
-            specified, frames outside this index will be padded with NaN.
+        timeMask : array, optional
+            Optional mask used to filter the time steps for which the data is to be added. If not specified, adds data
+            for all time frames. If specified, time frames outside this mask will be padded with NaN.
         """
 
         # get requested position
@@ -203,12 +206,14 @@ Fields:
             j = targetSets[subset]
 
         # get k-indexing
-        k: slice | int = slice(None) if frame is None else frame
+        if isinstance(timeMask, Array) and not np.isdtype(timeMask.dtype, "bool"):
+            raise ValueError(f"time mask array must have a boolean data type, not '{timeMask.dtype}'")
+        k: slice | Array = slice(None) if timeMask is None else timeMask
 
         # get expected array shape
         expectedEntityCount: int = int(targetData.shape[1]) if isinstance(j, slice) else j.size
-        expectedShape: tuple[int, ...] = \
-            (expectedEntityCount, int(targetData.shape[2])) if frame is None else (expectedEntityCount,)
+        expectedFrameCount: int = int(targetData.shape[2]) if isinstance(k, slice) else int(k.sum())
+        expectedShape: tuple[int, int] = expectedEntityCount, expectedFrameCount
         newArray: Array = np.full(
             shape=(len(data), targetData.shape[1], targetData.shape[2]),
             fill_value=np.nan,
@@ -224,7 +229,10 @@ Fields:
                     f"bad shape for '{header}' field output array at position '{position}'; "
                     f"expected shape {expectedShape}, but got {array.shape}"
                 )
-            newArray[i, j, k] = array
+            if isinstance(j, Array) and isinstance(k, Array):
+                newArray[i][np.ix_(j, k)] = array
+            else:
+                newArray[i][j, k] = array
 
         # concatenate
         object.__setattr__(self, dataAttribute, np.concatenate((targetData, newArray), axis=0))

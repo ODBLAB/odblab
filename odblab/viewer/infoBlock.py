@@ -30,12 +30,12 @@ class InfoBlock(Renderable):
 
     def setDeformationScaleFactor(self, value: float) -> None:
         """Sets the deformation scale factor."""
-        self._lines[1] = f"Deformation Scale Factor: {value:+.3E}"
+        self._lines[1] = f"Deformation Scale Factor: {value:+.6E}"
         self._actor.SetInput("\n".join(self._lines))
 
     def setTime(self, value: float) -> None:
         """Sets the frame time/frequency."""
-        self._lines[2] = f"Time: {value:+.3E}"
+        self._lines[2] = f"Time: {value:+.9E}"
         self._actor.SetInput("\n".join(self._lines))
 
     def setVariable(self, value: str) -> None:

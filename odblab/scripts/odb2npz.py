@@ -5,7 +5,7 @@
 #-----------------------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026, Carlos Souto and Diego Salamanca
 # Contact: csouto@fe.up.pt; diazsdiego@uniovi.es
-# License: <LICENSE>
+# License: https://spdx.org/licenses/GPL-3.0-only.html
 #-----------------------------------------------------------------------------------------------------------------------
 
 # type: ignore
@@ -156,7 +156,7 @@ def extractResultsMetadata(odbPath, tempDir):
             odb.close()
 
 def extractResultsWorker(args): return extractResults(*args)
-def extractResults(odbPath, tempDir, timeIndex, originalPosition, extrapolatedPosition):
+def extractResults(odbPath, tempDir, timeIndex):
     """Extracts the field outputs."""
     odb = None
     try:
@@ -165,55 +165,70 @@ def extractResults(odbPath, tempDir, timeIndex, originalPosition, extrapolatedPo
         odb = odbAccess.openOdb(path=odbPath, readOnly=True, readInternalSets=False)
         with open(os.path.join(tempDir, "__mesh_metadata__.pkl"), "rb") as file: meshMetadata = pickle.load(file)
         with open(os.path.join(tempDir, "__field_metadata__.pkl"), "rb") as file: fieldMetadata = pickle.load(file)
-        stepName, frameIndex, _ = fieldMetadata["__frame_info__"][timeIndex]
-        if extrapolatedPosition == CENTROID:
-            indexMap = meshMetadata["__element_map__"]
-            headerMap = fieldMetadata["__centroid_header_map__"]
-            diskArray = np.load(os.path.join(tempDir, "__centroid_data__.npy"), "r+")
-            labelsAttribute = "elementLabels"
-        else:
-            indexMap = meshMetadata["__node_map__"]
-            headerMap = fieldMetadata["__node_header_map__"]
-            diskArray = np.load(os.path.join(tempDir, "__node_data__.npy"), "r+")
-            labelsAttribute = "nodeLabels"
+        diskArrays = {
+            "__centroid_data__": np.load(os.path.join(tempDir, "__centroid_data__.npy"), "r+"),
+            "__node_data__": np.load(os.path.join(tempDir, "__node_data__.npy"), "r+"),
+        }
 
         # loop field outputs
-        for field in odb.steps[stepName].frames[frameIndex].fieldOutputs.values():
-            if field.locations[0].position != originalPosition: continue
-            if originalPosition != extrapolatedPosition: field = field.getSubset(position=extrapolatedPosition)
-            isSmoothingRequired = extrapolatedPosition == ELEMENT_NODAL
-            headers = [field.name + "." + label for label in field.componentLabels] or [field.name]
+        stepName, frameIndex, _ = fieldMetadata["__frame_info__"][timeIndex]
+        for fieldOutput in odb.steps[stepName].frames[frameIndex].fieldOutputs.values():
 
-            # pre-allocate arrays
-            if isSmoothingRequired:
-                matrix = np.zeros(shape=(len(indexMap), len(headers)), dtype=np.float32)
-                counts = np.zeros(shape=(matrix.shape[0], 1), dtype=np.int32)
-            else:
-                matrix = np.full(shape=(len(indexMap), len(headers)), fill_value=np.nan, dtype=np.float32)
+            # determine original and extrapolated positions
+            originalPosition = fieldOutput.locations[0].position
+            if originalPosition == NODAL: extrapolatedPositions = (NODAL,)
+            elif originalPosition == CENTROID: extrapolatedPositions = (CENTROID,)
+            elif originalPosition == INTEGRATION_POINT: extrapolatedPositions = (CENTROID, ELEMENT_NODAL)
+            else: continue
 
-            # extract data
-            for block in field.bulkDataBlocks:
-                entityName = block.instance.name if block.instance else "__root__"
-                i = [indexMap[(entityName, label)] for label in getattr(block, labelsAttribute)]
-                if not isSmoothingRequired:
-                    matrix[i, :] = block.data
+            # for each extrapolated position
+            for extrapolatedPosition in extrapolatedPositions:
+                if extrapolatedPosition == CENTROID:
+                    indexMap = meshMetadata["__element_map__"]
+                    headerMap = fieldMetadata["__centroid_header_map__"]
+                    diskArray = diskArrays["__centroid_data__"]
+                    labelsAttribute = "elementLabels"
                 else:
-                    np.add.at(matrix, (i, slice(None)), block.data)
-                    np.add.at(counts, (i, 0), 1)
+                    indexMap = meshMetadata["__node_map__"]
+                    headerMap = fieldMetadata["__node_header_map__"]
+                    diskArray = diskArrays["__node_data__"]
+                    labelsAttribute = "nodeLabels"
+                if originalPosition == extrapolatedPosition: field = fieldOutput
+                else: field = fieldOutput.getSubset(position=extrapolatedPosition)
+                isSmoothingRequired = extrapolatedPosition == ELEMENT_NODAL
+                headers = [field.name + "." + label for label in field.componentLabels] or [field.name]
 
-            # nodal smoothing/averaging
-            if isSmoothingRequired:
-                unmappedMask = counts[:, 0] == 0
-                counts[unmappedMask] = 1
-                matrix /= counts
-                matrix[unmappedMask, :] = np.nan
+                # pre-allocate arrays
+                if isSmoothingRequired:
+                    matrix = np.zeros(shape=(len(indexMap), len(headers)), dtype=np.float32)
+                    counts = np.zeros(shape=(matrix.shape[0], 1), dtype=np.int32)
+                else:
+                    matrix = np.full(shape=(len(indexMap), len(headers)), fill_value=np.nan, dtype=np.float32)
 
-            # save results
-            for k, header in enumerate(headers):
-                diskArray[headerMap[header], :, timeIndex] = matrix[:, k]
+                # extract data
+                for block in field.bulkDataBlocks:
+                    entityName = block.instance.name if block.instance else "__root__"
+                    i = [indexMap[(entityName, label)] for label in getattr(block, labelsAttribute)]
+                    if not isSmoothingRequired:
+                        matrix[i, :] = block.data
+                    else:
+                        np.add.at(matrix, (i, slice(None)), block.data)
+                        np.add.at(counts, (i, 0), 1)
+
+                # nodal smoothing/averaging
+                if isSmoothingRequired:
+                    unmappedMask = counts[:, 0] == 0
+                    counts[unmappedMask] = 1
+                    matrix /= counts
+                    matrix[unmappedMask, :] = np.nan
+
+                # save results
+                for k, header in enumerate(headers):
+                    diskArray[headerMap[header], :, timeIndex] = matrix[:, k]
 
         # done
-        diskArray.flush()
+        for diskArray in diskArrays.values():
+            diskArray.flush()
 
     finally:
         if odb is not None:
@@ -260,12 +275,7 @@ def main(odbPath, tempDir, cpus):
     # extract field outputs in parallel
     cpuCount = min(cpu_count(), cpus)
     print("Extracting field outputs using %d CPU(s)..." % cpuCount)
-    tasks = list()
-    for timeIndex in range(frameCount):
-        tasks.append((odbPath, tempDir, timeIndex, NODAL, NODAL))
-        tasks.append((odbPath, tempDir, timeIndex, CENTROID, CENTROID))
-        tasks.append((odbPath, tempDir, timeIndex, INTEGRATION_POINT, CENTROID))
-        tasks.append((odbPath, tempDir, timeIndex, INTEGRATION_POINT, ELEMENT_NODAL))
+    tasks = [(odbPath, tempDir, timeIndex) for timeIndex in range(frameCount)]
     pool = Pool(processes=cpuCount)
     pool.map(extractResultsWorker, tasks)
     pool.close()

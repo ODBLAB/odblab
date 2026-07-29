@@ -5,7 +5,7 @@
 #-----------------------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026, Carlos Souto and Diego Salamanca
 # Contact: csouto@fe.up.pt; diazsdiego@uniovi.es
-# License: <LICENSE>
+# License: https://spdx.org/licenses/GPL-3.0-only.html
 #-----------------------------------------------------------------------------------------------------------------------
 
 # type: ignore

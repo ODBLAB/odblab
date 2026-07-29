@@ -10,6 +10,20 @@ from subprocess import Popen, PIPE
 from importlib.resources import files, as_file
 from odblab.core import Database, autoComputeMagnitude, autoComputeInvariants
 
+def _getPythonExecutable() -> Path:
+    """Retrieves the absolute path to the current Python executable (MATLAB-friendly approach)."""
+    executable: Path = Path(sys.executable).resolve()
+    if "python" not in executable.stem.lower():
+        prefix: Path = Path(sys.exec_prefix).resolve()
+        if os.name == "nt":
+            venv: Path = prefix / "Scripts" / "python.exe"
+            base: Path = prefix / "python.exe"
+            return venv if venv.exists() else base
+        else:
+            return prefix / "bin" / "python"
+    else:
+        return executable
+
 def _runScript(args: Sequence[Any]) -> None:
     """Runs the extraction script as a subprocess (MATLAB-friendly approach)."""
     cmd: str = " ".join(f"\"{arg.resolve()}\"" if isinstance(arg, Path) else str(arg) for arg in args)
@@ -89,7 +103,7 @@ def _loadRst(rstPath: str | Path) -> Database:
     else:
         print("RSTZ database not found or outdated. Converting RST to RSTZ...")
         with as_file(files("odblab.scripts") / "rst2npz.py") as scriptPath:
-            _runScript((Path(sys.executable), scriptPath, "--rst", rstPath))
+            _runScript((_getPythonExecutable(), scriptPath, "--rst", rstPath))
     return _loadNpz(rstzPath, autoComputeAllInvariants)
 
 def load(filePath: str | Path, cpus: int | None = None) -> Database:
