@@ -165,7 +165,7 @@ classdef odblab < handle
             else, kwargs.fields = py.tuple(cellstr(fields));
             end
             if options.region ~= "", kwargs.region = py.str(options.region); end
-            if ~isempty(options.frames), kwargs.frames = py.numpy.ascontiguousarray(options.frames); end
+            if ~isempty(options.frames), kwargs.frames = py.numpy.ravel(options.frames); end
             kwargs = namedargs2cell(kwargs);
             pyOut = obj.pyObj.get(pyargs(kwargs{:}));
             convertArray = @(npArray) single(py.numpy.ascontiguousarray(npArray));
@@ -190,13 +190,13 @@ classdef odblab < handle
             if mod(numel(data), 2) ~= 0
                 error("odblab:ValueError", "Data cell array must contain an even number of items (key-value pairs).");
             end
-            convertArray = @(mlArray) py.numpy.ascontiguousarray(mlArray);
+            convertArray = @(mlArray) py.numpy.ascontiguousarray(mlArray).reshape(int64(size(mlArray)));
             data(2:2:end) = cellfun(convertArray, data(2:2:end), "UniformOutput", false);
             kwargs = struct();
             kwargs.data = py.dict(pyargs(data{:}));
             kwargs.position = py.str(position);
             if options.region ~= "", kwargs.region = py.str(options.region); end
-            if ~isempty(options.frames), kwargs.frames = py.numpy.ascontiguousarray(options.frames); end
+            if ~isempty(options.frames), kwargs.frames = py.numpy.ravel(options.frames); end
             kwargs = namedargs2cell(kwargs);
             obj.pyObj.add(pyargs(kwargs{:}));
         end
