@@ -4,7 +4,7 @@
 
 **ODBLAB** is free and open-source software distributed under the [GPLv3 licence](https://spdx.org/licenses/GPL-3.0-only.html).
 
-You can also use **ODBLAB** from MATLAB with the [official MATLAB wrapper](odblab-matlab/odblab.m)!
+You can also use **ODBLAB** from MATLAB with the [MATLAB wrapper](odblab-matlab/odblab.m)!
 
 ## How Does It Work?
 
