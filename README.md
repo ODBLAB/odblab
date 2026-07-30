@@ -4,7 +4,7 @@
 
 **ODBLAB** is free and open-source software distributed under the [GPLv3 licence](https://spdx.org/licenses/GPL-3.0-only.html).
 
-You can also use **ODBLAB** from MATLAB with the [official MATLAB wrapper]()!
+You can also use **ODBLAB** from MATLAB with the [official MATLAB wrapper](odblab-matlab/odblab.m)!
 
 ## How Does It Work?
 
@@ -73,7 +73,7 @@ Install **ODBLAB** from PyPI using `pip install odblab`. **Python 3.10 or later 
 
 **Python 3.10 or later is required.** MATLAB R2022b is the earliest release supporting Python 3.10. If using a newer Python version, check the [MATLAB-Python compatibility table](https://www.mathworks.com/support/requirements/python-compatibility.html). You can use [`pyenv`](https://www.mathworks.com/help/matlab/ref/pyenv.html) to verify or configure the Python interpreter used by MATLAB.
 
-Once Python is available to MATLAB, simply [download the MATLAB wrapper]() and place `odblab.m` in the current folder or on the MATLAB path. If necessary, the wrapper will ask for permission to run `pip install odblab` automatically.
+Once Python is available to MATLAB, simply [download the MATLAB wrapper](odblab-matlab/odblab.m) and place `odblab.m` in the current folder or on the MATLAB path. If necessary, the wrapper will ask for permission to run `pip install odblab` automatically.
 
 ## Usage
 

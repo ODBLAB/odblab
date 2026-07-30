@@ -6,6 +6,7 @@
 !.gitattributes
 !pyproject.toml
 !requirements.txt
+!*.m
 !*.py
 !*.svg
 !*.png
