@@ -47,8 +47,8 @@ def computePrincipal(*, s11: Array, s22: Array, s33: Array | None, s12: Array, s
     max: Array = eigenvalues[..., 2]
     mid: Array = eigenvalues[..., 1]
     min: Array = eigenvalues[..., 0]
-    major: Array = np.where(np.abs(max) > np.abs(min), max, min)
-    return max, mid, min, major
+    abs: Array = np.where(np.abs(max) > np.abs(min), max, min)
+    return max, mid, min, abs
 
 def computeEquivalentStress(s1: Array, s2: Array, s3: Array) -> tuple[Array, Array, Array]:
     """Compute the equivalent von Mises, Tresca, and pressure stress based on the provided principal stresses."""
@@ -89,7 +89,7 @@ def autoComputeInvariants(database: Database) -> None:
         invariants: dict[str, Array] = {}
         for label, components in tensors.items():
             if any(f"{label}.{invariant}" in currentHeaders for invariant in (
-                "MAX_PRINCIPAL", "MID_PRINCIPAL", "MIN_PRINCIPAL", "MAJOR_PRINCIPAL",
+                "MAX_PRINCIPAL", "MID_PRINCIPAL", "MIN_PRINCIPAL", "ABS_PRINCIPAL",
                 "MISES", "TRESCA", "PRESSURE"
             )): continue
             if any(ij not in components for ij in ("11", "22", "12")): continue
@@ -101,13 +101,13 @@ def autoComputeInvariants(database: Database) -> None:
                 s12 = s12/2
                 if s13 is not None: s13 = s13/2
                 if s23 is not None: s23 = s23/2
-            s1, s2, s3, major = computePrincipal(s11=s11, s22=s22, s33=s33, s12=s12, s13=s13, s23=s23)
-            invariants[f"{label}.MAX_PRINCIPAL"] = s1
-            invariants[f"{label}.MID_PRINCIPAL"] = s2
-            invariants[f"{label}.MIN_PRINCIPAL"] = s3
-            invariants[f"{label}.MAJOR_PRINCIPAL"] = major
+            max, mid, min, abs = computePrincipal(s11=s11, s22=s22, s33=s33, s12=s12, s13=s13, s23=s23)
+            invariants[f"{label}.MAX_PRINCIPAL"] = max
+            invariants[f"{label}.MID_PRINCIPAL"] = mid
+            invariants[f"{label}.MIN_PRINCIPAL"] = min
+            invariants[f"{label}.ABS_PRINCIPAL"] = abs
             if label == "S":
-                mises, tresca, pressure = computeEquivalentStress(s1, s2, s3)
+                mises, tresca, pressure = computeEquivalentStress(max, mid, min)
                 invariants[f"{label}.MISES"] = mises
                 invariants[f"{label}.TRESCA"] = tresca
                 invariants[f"{label}.PRESSURE"] = pressure

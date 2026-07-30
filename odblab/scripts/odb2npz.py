@@ -132,12 +132,14 @@ def extractResultsMetadata(odbPath, tempDir):
                 time = step.totalTime + frame.frameValue
                 if time not in frameInfo:
                     frameInfo[time] = (stepName, frameIndex, time)
-                for fieldOutput in frame.fieldOutputs.values():
-                    headers = [fieldOutput.name + "." + label for label in fieldOutput.componentLabels]
-                    headers = headers or [fieldOutput.name]
-                    if fieldOutput.locations[0].position in (NODAL, INTEGRATION_POINT):
+                for field in frame.fieldOutputs.values():
+                    if field.name.startswith(("COPEN", "CPRESS", "CSHEAR", "CSLIP", "CSTATUS")):
+                        headers = [".".join(field.name.split())]
+                    else:
+                        headers = [field.name + "." + label for label in field.componentLabels] or [field.name]
+                    if field.locations[0].position in (NODAL, INTEGRATION_POINT):
                         nodeHeaders.update((header, None) for header in headers)
-                    if fieldOutput.locations[0].position in (CENTROID, INTEGRATION_POINT):
+                    if field.locations[0].position in (CENTROID, INTEGRATION_POINT):
                         centroidHeaders.update((header, None) for header in headers)
         nodeHeaders = np.array(list(nodeHeaders.keys()), dtype="U")
         centroidHeaders = np.array(list(centroidHeaders.keys()), dtype="U")
@@ -196,7 +198,12 @@ def extractResults(odbPath, tempDir, timeIndex):
                 if originalPosition == extrapolatedPosition: field = fieldOutput
                 else: field = fieldOutput.getSubset(position=extrapolatedPosition)
                 isSmoothingRequired = extrapolatedPosition == ELEMENT_NODAL
-                headers = [field.name + "." + label for label in field.componentLabels] or [field.name]
+
+                # get headers
+                if field.name.startswith(("COPEN", "CPRESS", "CSHEAR", "CSLIP", "CSTATUS")):
+                    headers = [".".join(field.name.split())]
+                else:
+                    headers = [field.name + "." + label for label in field.componentLabels] or [field.name]
 
                 # pre-allocate arrays
                 if isSmoothingRequired:
