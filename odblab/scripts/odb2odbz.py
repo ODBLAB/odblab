@@ -14,6 +14,7 @@ import os
 import pickle
 import shutil
 import tempfile
+import traceback
 import odbAccess
 import numpy as np
 from argparse import ArgumentParser
@@ -258,6 +259,8 @@ def main(odbPath, tempDir, cpus):
         extractResultsMetadataProcess.start()
         extractMeshProcess.join()
         extractResultsMetadataProcess.join()
+        if extractMeshProcess.exitcode != 0 or extractResultsMetadataProcess.exitcode != 0:
+            raise RuntimeError("extraction failed; rerun with cpus=1")
 
     # initialize disk storage for result extraction
     print("Initializing field output storage...")
@@ -310,7 +313,7 @@ def main(odbPath, tempDir, cpus):
 
 if __name__ == "__main__":
     tempDir = tempfile.mkdtemp()
-    with open("odb2npz.log", "w") as log:
+    with open("odb2odbz.log", "w") as log:
         try:
             argParser = ArgumentParser()
             argParser.add_argument("--odb", dest="odb", type=os.path.abspath, required=True, help="The ODB file path.")
@@ -320,6 +323,7 @@ if __name__ == "__main__":
             log.write("EXIT_SUCCESS\n")
         except Exception as e:
             log.write("EXIT_FAILURE\n")
-            log.write("%s: %s\n" % (type(e).__name__, e))
+            log.write("%s: %s\n\n" % (type(e).__name__, e))
+            log.write(traceback.format_exc())
         finally:
             shutil.rmtree(tempDir, ignore_errors=True)

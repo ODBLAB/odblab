@@ -82,13 +82,13 @@ def _loadOdb(odbPath: str | Path, cpus: int | None = None) -> Database:
         autoComputeAllInvariants = False
     else:
         print("ODBZ database not found or outdated. Converting ODB to ODBZ...")
-        with as_file(files("odblab.scripts") / "odb2npz.py") as scriptPath:
+        with as_file(files("odblab.scripts") / "odb2odbz.py") as scriptPath:
             args: list[Any] = ["abaqus", "python", scriptPath, "--odb", odbPath]
             if cpus is not None: args += ["--cpus", cpus]
             _runScript(args)
-        with open("odb2npz.log", "r") as log:
+        with open("odb2odbz.log", "r") as log:
             if log.readline().strip() != "EXIT_SUCCESS":
-                raise RuntimeError("error in 'odb2npz.py'\n  " + log.readline().strip())
+                raise RuntimeError("error in 'odb2odbz.py' (see 'odb2odbz.log')\n  " + log.readline().strip())
     return _loadNpz(odbzPath, autoComputeAllInvariants)
 
 def _loadRst(rstPath: str | Path) -> Database:
@@ -102,7 +102,7 @@ def _loadRst(rstPath: str | Path) -> Database:
         autoComputeAllInvariants = False
     else:
         print("RSTZ database not found or outdated. Converting RST to RSTZ...")
-        with as_file(files("odblab.scripts") / "rst2npz.py") as scriptPath:
+        with as_file(files("odblab.scripts") / "rst2rstz.py") as scriptPath:
             _runScript((_getPythonExecutable(), scriptPath, "--rst", rstPath))
     return _loadNpz(rstzPath, autoComputeAllInvariants)
 
