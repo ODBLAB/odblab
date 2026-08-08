@@ -16,6 +16,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         # main window
+        self.setWindowIcon(QIcon(str(files("odblab.icons") / "odblab.ico")))
         self.setWindowTitle("ODBLAB Viewer")
         self.resize(1280, 720)
 
