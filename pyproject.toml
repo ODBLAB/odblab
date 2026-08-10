@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "odblab"
 description = "ODBLAB"
 keywords = []
-version = "0.2.2"
+version = "0.2.3"
 readme = "README.md"
 license = "GPL-3.0-only"
 requires-python = ">=3.10"
