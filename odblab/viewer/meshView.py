@@ -2,14 +2,13 @@ import warnings
 import numpy as np
 from odblab.core import Database
 from odblab.viewer import RenderStyles, Renderable, Legend, getCellType
-from vtkmodules.vtkCommonCore import vtkPoints, vtkFloatArray, vtkIntArray
-from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid
+from vtkmodules.vtkCommonCore import vtkPoints, vtkFloatArray, vtkBitArray
+from vtkmodules.vtkCommonDataModel import vtkUnstructuredGrid, VTK_EMPTY_CELL, VTK_VERTEX
 from vtkmodules.vtkCommonTransforms import vtkTransform
 from vtkmodules.vtkFiltersCore import vtkExtractEdges, vtkThreshold
 from vtkmodules.vtkFiltersGeneral import vtkWarpVector
 from vtkmodules.vtkFiltersGeometry import vtkUnstructuredGridGeometryFilter
 from vtkmodules.vtkRenderingCore import vtkDataSetMapper, vtkActor
-from vtkmodules.util.numpy_support import vtk_to_numpy
 from itertools import combinations
 from numpy import ndarray as Array
 
@@ -26,10 +25,17 @@ class MeshView(Renderable):
         super().__init__()
         self._database: Database = database
         self._renderStyle: RenderStyles = RenderStyles.Filled
+        self._renderUnconnectedPoints: bool = True
+
+        # get unconnected nodes/points
+        self._unusedPoints: Array = np.setdiff1d(
+            np.arange(self._database.nodes.shape[0], dtype=self._database.elements.dtype),
+            np.unique(self._database.elements.compressed())
+        )
 
         # data set
-        self._cellVisibilityMask: vtkIntArray = vtkIntArray()
-        self._cellVisibilityMask.SetNumberOfValues(self._database.elements.shape[0])
+        self._cellVisibilityMask: vtkBitArray = vtkBitArray()
+        self._cellVisibilityMask.SetNumberOfValues(self._database.elements.shape[0] + self._unusedPoints.size)
         self._cellVisibilityMask.SetName("CellVisibilityMask")
         self._cellVisibilityMask.Fill(1)
         self._warpVectors: vtkFloatArray = vtkFloatArray()
@@ -40,7 +46,7 @@ class MeshView(Renderable):
         self._pointScalars.SetNumberOfValues(self._database.nodes.shape[0])
         self._pointScalars.Fill(0.0)
         self._cellScalars: vtkFloatArray = vtkFloatArray()
-        self._cellScalars.SetNumberOfValues(self._database.elements.shape[0])
+        self._cellScalars.SetNumberOfValues(self._database.elements.shape[0] + self._unusedPoints.size)
         self._cellScalars.Fill(0.0)
         self._points: vtkPoints = vtkPoints()
         self._points.SetNumberOfPoints(self._database.nodes.shape[0])
@@ -52,16 +58,20 @@ class MeshView(Renderable):
         self._grid.GetCellData().SetScalars(self._cellScalars)
         self._grid.GetCellData().AddArray(self._cellVisibilityMask)
         self._grid.SetPoints(self._points)
-        for type, connectivity in zip(self._database.types, self._database.elements):
+        for elementType, connectivity in zip(self._database.types, self._database.elements):
             connectivity = connectivity.compressed()
-            if cellType := getCellType(type):
-                self._grid.InsertNextCell(cellType, connectivity.size, connectivity)
-            else:
-                self._grid.InsertNextCell(cellType, 0, [])
+            cellType = getCellType(elementType)
+            if cellType == VTK_EMPTY_CELL:
+                self._grid.InsertNextCell(VTK_EMPTY_CELL, 0, [])
                 warnings.warn(
-                    f"could not map element type '{type}' to a VTK cell type; "
+                    f"could not map element type '{elementType}' to a VTK cell type; "
                     "unmapped elements are not rendered"
                 )
+            else:
+                self._grid.InsertNextCell(cellType, connectivity.size, connectivity)
+        for i, point in enumerate(self._unusedPoints):
+            self._grid.InsertNextCell(VTK_VERTEX, 1, [point])
+            self._cellScalars.SetValue(self._database.elements.shape[0] + i, np.nan)
 
         # visibility filter
         self._visibilityFilter: vtkThreshold = vtkThreshold()
@@ -85,6 +95,7 @@ class MeshView(Renderable):
         self._gridActor: vtkActor = vtkActor()
         self._gridActor.SetMapper(self._gridMapper)
         self._gridActor.SetObjectName("__grid__")
+        self._gridActor.GetProperty().SetPointSize(10)
 
         # geometry filter
         self._geometryFilter: vtkUnstructuredGridGeometryFilter = vtkUnstructuredGridGeometryFilter()
@@ -105,6 +116,7 @@ class MeshView(Renderable):
         self._edgesActor.SetMapper(self._edgesMapper)
         self._edgesActor.SetObjectName("__edges__")
         self._edgesActor.GetProperty().SetColor(0.0, 0.0, 0.0)
+        self._edgesActor.GetProperty().SetPointSize(10)
 
         # prop list
         self._props += [self._gridActor, self._edgesActor]
@@ -162,12 +174,16 @@ class MeshView(Renderable):
 
     def getCellVisibilityMask(self) -> Array:
         """Returns a cell visibility mask array."""
-        return vtk_to_numpy(self._cellVisibilityMask).astype(np.bool, copy=True)
+        out: Array = np.empty(shape=(self._database.elements.shape[0],), dtype=np.bool)
+        for i in range(self._database.elements.shape[0]):
+            out[i] = self._cellVisibilityMask.GetValue(i)
+        return out
 
     def getPointVisibilityMask(self) -> Array:
         """Returns a point visibility mask array."""
         mask: Array = np.zeros(shape=(self._database.nodes.shape[0],), dtype=np.bool)
         mask[self._database.elements[self.getCellVisibilityMask(), :].compressed()] = 1
+        mask[self._unusedPoints] = self._renderUnconnectedPoints
         return mask
 
     def mirror(self, planeYZ: bool = False, planeXZ: bool = False, planeXY: bool = False) -> None:
@@ -206,3 +222,14 @@ class MeshView(Renderable):
         contour: bool = bool(self._gridMapper.GetScalarVisibility() + self._edgesMapper.GetScalarVisibility())
         self._gridMapper.SetScalarVisibility(contour and value in (RenderStyles.Filled, RenderStyles.FilledNoEdges))
         self._edgesMapper.SetScalarVisibility(contour and value is RenderStyles.Wireframe)
+
+    def renderUnconnectedPoints(self) -> bool:
+        """Unconnected point rendering flag."""
+        return self._renderUnconnectedPoints
+
+    def setRenderUnconnectedPoints(self, value: bool) -> None:
+        """Sets the unconnected point rendering flag."""
+        self._renderUnconnectedPoints = value
+        for i in range(self._database.elements.shape[0], self._database.elements.shape[0] + self._unusedPoints.size):
+            self._cellVisibilityMask.SetValue(i, value)
+        self._cellVisibilityMask.Modified()

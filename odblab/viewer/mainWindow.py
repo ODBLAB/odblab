@@ -258,7 +258,7 @@ class MainWindow(QMainWindow):
         db: Database = self._viewport.meshView.database
         region: str = self._viewRegionElementSetsActionGroup.checkedAction().text()
         visibilityMask: Array = np.zeros(shape=(db.elements.shape[0],), dtype=np.int32)
-        if region == "ALL ELEMENTS": visibilityMask[:] = 1
+        if region == "[All Elements]": visibilityMask[:] = 1
         else: visibilityMask[db.elementSets[region]] = 1
         for action in self._viewRegionElementTypesActionGroup.actions():
             if not action.isChecked():
@@ -266,6 +266,13 @@ class MainWindow(QMainWindow):
         self._viewport.meshView.applyCellVisibilityMask(visibilityMask)
         self._viewport.plotNodeContour(draw=False)
         self._viewport.plotCentroidContour(draw=False)
+        self._viewport.draw()
+
+    def _onViewRegionShowUnconnectedNodesActionTriggered(self, value: bool) -> None:
+        """On view > region > show unconnected nodes action triggered."""
+        if self._viewport.meshView is None: return
+        self._viewport.meshView.setRenderUnconnectedPoints(value)
+        self._viewport.plotNodeContour(draw=False)
         self._viewport.draw()
 
     def _onViewMirrorActionTriggered(self) -> None:
@@ -389,7 +396,7 @@ class MainWindow(QMainWindow):
             self._viewRegionMenu.removeAction(action := actions[-1])
             action.deleteLater()
         self._viewRegionMenu.addSection("Element Sets")
-        for i, name in enumerate(["ALL ELEMENTS"] + [*database.elementSets.keys()]):
+        for i, name in enumerate(["[All Elements]"] + [*database.elementSets.keys()]):
             action: QAction = QAction(self._viewRegionMenu)
             action.setText(name)
             action.setChecked(i == 0)
@@ -406,3 +413,13 @@ class MainWindow(QMainWindow):
             action.triggered.connect(self._onViewRegionActionTriggered)
             self._viewRegionMenu.addAction(action)
             self._viewRegionElementTypesActionGroup.addAction(action)
+        self._viewRegionMenu.addSection("Other Options")
+        showUnconnectedNodesAction: QAction = QAction(self._viewRegionMenu)
+        showUnconnectedNodesAction.setText("Show Unconnected Nodes")
+        showUnconnectedNodesAction.setCheckable(True)
+        showUnconnectedNodesAction.setChecked(
+            self._viewport.meshView is not None and
+            self._viewport.meshView.renderUnconnectedPoints()
+        )
+        showUnconnectedNodesAction.triggered.connect(self._onViewRegionShowUnconnectedNodesActionTriggered)
+        self._viewRegionMenu.addAction(showUnconnectedNodesAction)
