@@ -25,7 +25,7 @@ class MeshView(Renderable):
         super().__init__()
         self._database: Database = database
         self._renderStyle: RenderStyles = RenderStyles.Filled
-        self._renderUnconnectedPoints: bool = True
+        self._renderUnconnectedPoints: bool = False
 
         # get unconnected nodes/points
         self._unusedPoints: Array = np.setdiff1d(
@@ -120,6 +120,9 @@ class MeshView(Renderable):
 
         # prop list
         self._props += [self._gridActor, self._edgesActor]
+
+        # apply initial settings
+        self.setRenderUnconnectedPoints(False)
 
     def setLegend(self, legend: Legend) -> None:
         """Sets the legend for the scalar contour plot."""
