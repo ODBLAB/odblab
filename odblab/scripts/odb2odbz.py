@@ -17,8 +17,9 @@ import tempfile
 import traceback
 import odbAccess
 import numpy as np
+from collections import OrderedDict
 from argparse import ArgumentParser
-from multiprocessing import Process, Pool, cpu_count
+from multiprocessing import Pool, cpu_count
 from abaqusConstants import NODAL, ELEMENT_NODAL, CENTROID, INTEGRATION_POINT
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -173,8 +174,8 @@ def extractResultsMetadata(odbPath, tempDir):
 
         # get unique frames and build header to index mappings
         uniqueFrames = {}
-        nodeHeaderCount, nodeHeaderMap = 0, {}
-        centroidHeaderCount, centroidHeaderMap = 0, {}
+        nodeHeaderCount, nodeHeaderMap = 0, OrderedDict()
+        centroidHeaderCount, centroidHeaderMap = 0, OrderedDict()
         for stepName, step in odb.steps.items():
             for frameIndex, frame in enumerate(step.frames):
                 time = step.totalTime + frame.frameValue
