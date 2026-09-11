@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from numpy import ndarray as Array
 from odblab.core import Database
@@ -315,14 +316,19 @@ class MainWindow(QMainWindow):
 
     def _onPrintActionTriggered(self) -> None:
         """On print action triggered."""
-        if pngFile := QFileDialog.getSaveFileName(
+        filePath, selectedFilter = QFileDialog.getSaveFileName(
             parent=self,
             caption="Print Viewport",
-            filter="PNG Image Files (*.png)",
+            filter="PNG Image Files (*.png);;SVG Image Files (*.svg);;PDF Document Files (*.pdf)",
             options=QFileDialog.Option.DontUseNativeDialog
-        )[0]:
-            if not pngFile.lower().endswith(".png"): pngFile += ".png"
-            self._viewport.print(pngFile)
+        )
+        if not filePath: return
+        fileName: str = os.path.splitext(filePath)[0]
+        match selectedFilter:
+            case "PNG Image Files (*.png)":    self._viewport.print(fileName, "png")
+            case "SVG Image Files (*.svg)":    self._viewport.print(fileName, "svg")
+            case "PDF Document Files (*.pdf)": self._viewport.print(fileName, "pdf")
+            case _: raise NotImplementedError()
 
     def _onPauseFrameActionTriggered(self) -> None:
         """On pause frame action triggered."""

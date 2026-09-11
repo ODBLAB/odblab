@@ -1,7 +1,9 @@
 import numpy as np
+from typing import Literal
 from numpy import ndarray as Array
 from odblab.viewer import Views, Triad, Border, Legend, InfoBlock, MeshView
 from vtkmodules.vtkIOImage import vtkPNGWriter
+from vtkmodules.vtkIOExportGL2PS import vtkGL2PSExporter
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import vtkRenderer, vtkRenderWindow, vtkRenderWindowInteractor, vtkWindowToImageFilter
 from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
@@ -287,7 +289,7 @@ class Viewport(QWidget):
         # done
         if draw: self._renderWindow.Render()
 
-    def print(self, pngPath: str) -> None:
+    def print(self, fileName: str, format: Literal["png", "svg", "pdf"]) -> None:
         """Prints the current viewport scene."""
 
         # save current background and text colors
@@ -297,32 +299,57 @@ class Viewport(QWidget):
         legendTextColor: tuple[float, float, float] = self._legend.textColor()
         triadTextColor: tuple[float, float, float] = self._triad.textColor()
 
-        # set white background and black text
-        self._renderer.SetBackground(1.0, 1.0, 1.0)
-        self._renderer.SetBackground2(1.0, 1.0, 1.0)
-        self._infoBlock.setTextColor((0.0, 0.0, 0.0))
-        self._legend.setTextColor((0.0, 0.0, 0.0))
-        self._triad.setTextColor((0.0, 0.0, 0.0))
-        self.draw()
+        try:
 
-        # create image filter
-        filter: vtkWindowToImageFilter = vtkWindowToImageFilter()
-        filter.SetInput(self._renderWindow)
-        filter.SetInputBufferTypeToRGB()
+            # set white background and black text
+            self._renderer.SetBackground(1.0, 1.0, 1.0)
+            self._renderer.SetBackground2(1.0, 1.0, 1.0)
+            self._infoBlock.setTextColor((0.0, 0.0, 0.0))
+            self._legend.setTextColor((0.0, 0.0, 0.0))
+            self._triad.setTextColor((0.0, 0.0, 0.0))
+            self.draw()
 
-        # create writer and write to file
-        writer: vtkPNGWriter = vtkPNGWriter()
-        writer.SetInputConnection(filter.GetOutputPort())
-        writer.SetFileName(pngPath)
-        writer.Write()
+            match format:
+                case "png":
 
-        # reset background and text colors
-        self._renderer.SetBackground(backgroundColor1)
-        self._renderer.SetBackground2(backgroundColor2)
-        self._infoBlock.setTextColor(infoBlockTextColor)
-        self._legend.setTextColor(legendTextColor)
-        self._triad.setTextColor(triadTextColor)
-        self.draw()
+                    # create image filter
+                    filter: vtkWindowToImageFilter = vtkWindowToImageFilter()
+                    filter.SetInput(self._renderWindow)
+                    filter.SetInputBufferTypeToRGB()
+
+                    # create png writer and write to file
+                    writer: vtkPNGWriter = vtkPNGWriter()
+                    writer.SetInputConnection(filter.GetOutputPort())
+                    writer.SetFileName(fileName + ".png")
+                    writer.Write()
+
+                case "svg" | "pdf":
+
+                    # export to svg/pdf file
+                    exporter: vtkGL2PSExporter = vtkGL2PSExporter()
+                    match format:
+                        case "svg": exporter.SetFileFormatToSVG()
+                        case "pdf": exporter.SetFileFormatToPDF()
+                        case _: raise NotImplementedError()
+                    exporter.CompressOff()
+                    exporter.TextAsPathOn()
+                    exporter.Write3DPropsAsRasterImageOff()
+                    exporter.SetRenderWindow(self._renderWindow)
+                    exporter.SetFilePrefix(fileName)
+                    exporter.Write()
+
+                case _:
+                    raise NotImplementedError()
+
+        finally:
+
+            # reset background and text colors
+            self._renderer.SetBackground(backgroundColor1)
+            self._renderer.SetBackground2(backgroundColor2)
+            self._infoBlock.setTextColor(infoBlockTextColor)
+            self._legend.setTextColor(legendTextColor)
+            self._triad.setTextColor(triadTextColor)
+            self.draw()
 
     def useGlobalRange(self) -> bool:
         """Gets the use global range property."""
