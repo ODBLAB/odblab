@@ -1,5 +1,5 @@
 %-----------------------------------------------------------------------------------------------------------------------
-% Official MATLAB wrapper for the ODBLAB Python package.
+% Official MATLAB wrapper for the ODBLAB Python package (v0.1.0).
 % https://github.com/ODBLAB/odblab
 %-----------------------------------------------------------------------------------------------------------------------
 % Copyright (c) 2026, Carlos Souto and Diego Salamanca

@@ -20,7 +20,7 @@ import numpy as np
 from collections import OrderedDict
 from argparse import ArgumentParser
 from multiprocessing import Pool, cpu_count
-from abaqusConstants import NODAL, ELEMENT_NODAL, CENTROID, INTEGRATION_POINT
+from abaqusConstants import NODAL, ELEMENT_NODAL, CENTROID, INTEGRATION_POINT, MODAL
 
 #-----------------------------------------------------------------------------------------------------------------------
 
@@ -178,7 +178,7 @@ def extractResultsMetadata(odbPath, tempDir):
         centroidHeaderCount, centroidHeaderMap = 0, OrderedDict()
         for stepName, step in odb.steps.items():
             for frameIndex, frame in enumerate(step.frames):
-                time = step.totalTime + frame.frameValue
+                time = frame.frequency if step.domain == MODAL else step.totalTime + frame.frameValue
                 if time not in uniqueFrames:
                     uniqueFrames[time] = (stepName, frameIndex)
                 for fieldOutput in frame.fieldOutputs.values():

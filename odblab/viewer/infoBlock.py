@@ -35,7 +35,7 @@ class InfoBlock(Renderable):
 
     def setTime(self, value: float) -> None:
         """Sets the frame time/frequency."""
-        self._lines[2] = f"Time: {value:+.9E}"
+        self._lines[2] = f"Time/Frequency: {value:+.9E}"
         self._actor.SetInput("\n".join(self._lines))
 
     def setVariable(self, value: str) -> None:
