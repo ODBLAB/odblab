@@ -35,6 +35,7 @@ class Legend(Renderable):
         self._intervals: int = 12
         self._continuous: bool = False
         self._reversed: bool = False
+        self._log: bool = False
         self.rebuild(self._spectrum, self._intervals, self._continuous, self._reversed)
 
     def assignLookupTableToMapper(self, mapper: vtkMapper) -> None:
@@ -42,12 +43,13 @@ class Legend(Renderable):
         mapper.SetLookupTable(self._lookupTable)
 
     def rebuild(self, spectrum: Spectrums | None = None, intervals: int | None = None, continuous: bool | None = None,
-        reversed: bool | None = None) -> None:
+        reversed: bool | None = None, log: bool | None = None) -> None:
         """Rebuilds the legend."""
         if spectrum is not None: self._spectrum = spectrum
         if intervals is not None: self._intervals = intervals
         if continuous is not None: self._continuous = continuous
         if reversed is not None: self._reversed = reversed
+        if log is not None: self._log = log
 
         # counts
         colorCount: int = self._intervals if not self._continuous else 128
@@ -66,6 +68,8 @@ class Legend(Renderable):
         self._lookupTable.SetNanColor(1.0, 1.0, 1.0, 1.0)
         self._lookupTable.SetNumberOfTableValues(colorCount)
         for i, weight in enumerate(weights): self._lookupTable.SetTableValue(i, *colorFunction.GetColor(weight))
+        if self._log: self._lookupTable.SetScaleToLog10()
+        else: self._lookupTable.SetScaleToLinear()
         self._lookupTable.Build()
 
         # update actor

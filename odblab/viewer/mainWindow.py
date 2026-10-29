@@ -169,6 +169,17 @@ class MainWindow(QMainWindow):
             self._viewColormapMenu.addAction(viewColormapAction)
             self._viewColormapActionGroup.addAction(viewColormapAction)
 
+        # separator
+        self._viewColormapMenu.addSeparator()
+
+        # view > colormap > log scale action
+        self._viewColormapLogScaleAction: QAction = QAction(self._viewColormapMenu)
+        self._viewColormapLogScaleAction.setText("Logarithmic Scale")
+        self._viewColormapLogScaleAction.setCheckable(True)
+        self._viewColormapLogScaleAction.setChecked(False)
+        self._viewColormapLogScaleAction.triggered.connect(self._onViewColormapLogScaleActionTriggered)
+        self._viewColormapMenu.addAction(self._viewColormapLogScaleAction)
+
         # view > deformation scale factor action
         self._viewDeformationScaleFactorAction: QAction = QAction(self._viewMenu)
         self._viewDeformationScaleFactorAction.setText("Deformation Scale Factor...")
@@ -303,6 +314,11 @@ class MainWindow(QMainWindow):
         self._viewport.legend.rebuild(Spectrums(self._viewColormapActionGroup.checkedAction().text()))
         self._viewport.draw()
 
+    def _onViewColormapLogScaleActionTriggered(self) -> None:
+        """On view > colormap > log scale action triggered."""
+        self._viewport.legend.rebuild(log=self._viewColormapLogScaleAction.isChecked())
+        self._viewport.draw()
+
     def _onViewDeformationScaleFactorActionTriggered(self) -> None:
         """On view > deformation scale factor action triggered."""
         value, ok = QInputDialog.getDouble(
@@ -390,8 +406,8 @@ class MainWindow(QMainWindow):
                 for token in header.split("."):
                     child: QTreeWidgetItem
                     for i in range(parent.childCount()):
-                        if parent.child(i).text(0) == token:
-                            child = parent.child(i)
+                        if (_child := parent.child(i)) is not None and _child.text(0) == token:
+                            child = _child
                             break
                     else:
                         child = QTreeWidgetItem(parent, (token,))
